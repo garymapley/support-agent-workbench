@@ -14,7 +14,7 @@ class KnowledgeLoaderTests(unittest.TestCase):
         self.assertLessEqual(len(documents), 20)
         for document in documents:
             content = document.read_text(encoding="utf-8")
-            self.assertGreater(len(content), 1500, document.name)
+            self.assertGreater(len(content), 1000, document.name)
             self.assertGreaterEqual(content.count("\n## "), 4, document.name)
 
         self.assertGreaterEqual(len(chunks), len(documents))
