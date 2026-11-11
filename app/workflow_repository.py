@@ -78,8 +78,6 @@ def create_support_ticket(
     explicit_refund_request = (
         normalized_issue_type == "refund"
         or normalized_action == "refund"
-        or "退款" in normalized_description
-        or "refund" in normalized_description.lower()
     )
     if explicit_refund_request:
         normalized_issue_type = "refund"

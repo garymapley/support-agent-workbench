@@ -93,4 +93,30 @@ def _migrate_existing_sqlite_schema() -> None:
                 "ON approval_requests (thread_id)"
             )
         )
+    inspector = inspect(engine)
+    if "agent_runs" in inspector.get_table_names():
+        run_columns = {
+            column["name"]
+            for column in inspector.get_columns("agent_runs")
+        }
+        if "run_scope" not in run_columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE agent_runs ADD COLUMN "
+                        "run_scope VARCHAR(20) NOT NULL DEFAULT 'runtime'"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "UPDATE agent_runs SET run_scope='evaluation' "
+                        "WHERE thread_id LIKE 'agent:eval-%'"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_agent_runs_run_scope "
+                        "ON agent_runs (run_scope)"
+                    )
+                )
 

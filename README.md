@@ -128,7 +128,7 @@ DASHSCOPE_API_KEY=sk-your-key-here
 - `reports/eval_report.json`：机器可读明细
 - `reports/eval_report.md`：面试展示报告
 
-当前基准结果为工具正确率 100%、策略合规率 100%、平均延迟约 4.48 秒。每次 Agent 运行会记录工具、Token、延迟和状态，并在 `logs/agent.jsonl` 输出脱敏 JSON 日志。成本估算不会硬编码可能变化的模型价格；在 `.env` 填写 `CHAT_INPUT_COST_PER_MILLION_CNY` 和 `CHAT_OUTPUT_COST_PER_MILLION_CNY` 后即可自动统计。
+当前评测包含 13 个真实 Agent 场景、6 个风险边界检查和 1 个故障注入检查。基准结果为工具正确率 100%、策略合规率 100%、风险分级准确率 100%、失败保护通过率 100%，平均延迟约 4.65 秒，按百炼 2026-11-11 忙时官方单价估算总成本约 ¥0.163。评测使用独立临时数据库，不计入业务指标。每次运行会记录工具、Token、延迟和状态，并在 `logs/agent.jsonl` 输出脱敏 JSON 日志。
 
 审批演示会创建高风险退款工单，在主 LangGraph 的人工节点暂停，再模拟主管审批并从同一个 SQLite thread 检查点恢复。审批通过后的状态是 `approved_pending_execution`，项目不会执行真实退款。
 

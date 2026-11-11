@@ -14,6 +14,7 @@ from app.model import get_chat_model
 from app.tools.order_tools import ORDER_TOOLS
 from app.tools.policy_tools import POLICY_TOOLS
 from app.tools.workflow_tools import WORKFLOW_TOOLS
+from app.workflow_repository import get_approval
 
 
 SYSTEM_PROMPT = """
@@ -40,16 +41,20 @@ class SupportState(MessagesState, total=False):
     pending_approval_id: str | None
     approval_status: str | None
     resume_to_agent: bool
+    approval_notice: str | None
 
 
 def answer_ticket(state: SupportState) -> dict:
     """LangGraph 的第一个节点：调用千问回答用户。"""
 
     model = get_chat_model().bind_tools(AGENT_TOOLS)
-    response = model.invoke(
-        [SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]
-    )
-    return {"messages": [response]}
+    prompt_messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    if state.get("approval_notice"):
+        prompt_messages.append(
+            SystemMessage(content=state["approval_notice"])
+        )
+    response = model.invoke([*prompt_messages, *state["messages"]])
+    return {"messages": [response], "approval_notice": None}
 
 
 def _current_approval_id(state: SupportState) -> str | None:
@@ -84,21 +89,33 @@ def await_approval(state: SupportState) -> dict:
     if not approval_id:
         raise ValueError("主图进入审批节点，但没有找到 approval_id")
 
+    current = get_approval(approval_id)
+    if current is None:
+        return {
+            "pending_approval_id": None,
+            "approval_notice": f"审批 {approval_id} 不存在，已清理等待状态。",
+        }
+    if current["status"] != "pending":
+        return {
+            "pending_approval_id": None,
+            "approval_status": current["status"],
+            "approval_notice": (
+                f"审批 {approval_id} 已是 {current['status']}，"
+                "无需再次等待人工处理。"
+            ),
+        }
+
     decision = interrupt(build_approval_interrupt(approval_id))
     approval = record_approval_decision(approval_id, decision)
     status_text = "已通过" if approval["status"] == "approved" else "已拒绝"
     return {
         "pending_approval_id": None,
         "approval_status": approval["status"],
-        "messages": [
-            SystemMessage(
-                content=(
-                    f"人工审批 {approval_id} {status_text}；"
-                    f"审核人：{approval['reviewer']}。"
-                    "退款仍未自动执行，请根据审批结果向用户说明下一步。"
-                )
-            )
-        ],
+        "approval_notice": (
+            f"人工审批 {approval_id} {status_text}；"
+            f"审核人：{approval['reviewer']}。"
+            "退款仍未自动执行，请根据审批结果向用户说明下一步。"
+        ),
     }
 
 

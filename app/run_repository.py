@@ -18,6 +18,7 @@ def _run_to_dict(run: AgentRunRecord) -> dict[str, Any]:
         "run_id": run.run_id,
         "thread_id": run.thread_id,
         "run_type": run.run_type,
+        "run_scope": run.run_scope,
         "status": run.status,
         "user_input": run.user_input,
         "answer": run.answer,
@@ -32,13 +33,15 @@ def _run_to_dict(run: AgentRunRecord) -> dict[str, Any]:
     }
 
 
-def list_runs(limit: int = 50) -> list[dict[str, Any]]:
+def list_runs(limit: int = 50, scope: str = "runtime") -> list[dict[str, Any]]:
     with session_scope() as session:
-        runs = session.scalars(
+        query = (
             select(AgentRunRecord)
+            .where(AgentRunRecord.run_scope == scope)
             .order_by(desc(AgentRunRecord.created_at), desc(AgentRunRecord.id))
             .limit(limit)
         )
+        runs = session.scalars(query)
         return [_run_to_dict(run) for run in runs]
 
 
@@ -50,9 +53,15 @@ def get_run(run_id: str) -> dict[str, Any] | None:
         return _run_to_dict(run) if run else None
 
 
-def summarize_runs() -> dict[str, Any]:
+def summarize_runs(scope: str = "runtime") -> dict[str, Any]:
     with session_scope() as session:
-        runs = list(session.scalars(select(AgentRunRecord)))
+        runs = list(
+            session.scalars(
+                select(AgentRunRecord).where(
+                    AgentRunRecord.run_scope == scope
+                )
+            )
+        )
     if not runs:
         return {
             "run_count": 0,

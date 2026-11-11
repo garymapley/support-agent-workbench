@@ -209,7 +209,11 @@ def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
                 result = current
             else:
                 result = graph.invoke(
-                    {"messages": [HumanMessage(content=payload.message)]},
+                    {
+                        "messages": [HumanMessage(content=payload.message)],
+                        "resume_to_agent": True,
+                        "approval_notice": None,
+                    },
                     config=config,
                 )
     except ThreadBusyError as exc:
@@ -372,13 +376,16 @@ def get_approvals(
 @app.get("/observability/runs", tags=["observability"])
 def get_run_records(
     limit: int = Query(50, ge=1, le=200),
+    scope: str = Query("runtime", pattern="^(runtime|evaluation|test)$"),
 ) -> list[dict[str, Any]]:
-    return list_runs(limit)
+    return list_runs(limit, scope)
 
 
 @app.get("/observability/summary", tags=["observability"])
-def get_run_summary() -> dict[str, Any]:
-    return summarize_runs()
+def get_run_summary(
+    scope: str = Query("runtime", pattern="^(runtime|evaluation|test)$"),
+) -> dict[str, Any]:
+    return summarize_runs(scope)
 
 
 @app.get("/approvals/{approval_id}", tags=["approvals"])

@@ -121,10 +121,10 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(result["messages"], [])
 
     def test_observability_endpoints(self) -> None:
-        summary = get_run_summary()
+        summary = get_run_summary(scope="runtime")
         self.assertGreaterEqual(summary["run_count"], 1)
         self.assertIn("average_latency_ms", summary)
-        runs = get_run_records(limit=10)
+        runs = get_run_records(limit=10, scope="runtime")
         self.assertTrue(runs)
         self.assertIn("run_id", runs[0])
 

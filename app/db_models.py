@@ -97,6 +97,9 @@ class AgentRunRecord(Base):
     )
     thread_id: Mapped[str] = mapped_column(String(160), index=True, nullable=False)
     run_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    run_scope: Mapped[str] = mapped_column(
+        String(20), index=True, default="runtime", nullable=False
+    )
     status: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
     user_input: Mapped[str] = mapped_column(Text, default="")
     answer: Mapped[str] = mapped_column(Text, default="")

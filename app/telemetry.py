@@ -106,6 +106,7 @@ def record_run(
 ) -> str:
     run_id = uuid4().hex
     metrics = message_metrics(messages)
+    run_scope = "evaluation" if thread_id.startswith("agent:eval-") else "runtime"
     cost = estimate_cost_cny(
         metrics["input_tokens"], metrics["output_tokens"]
     )
@@ -114,6 +115,7 @@ def record_run(
             "run_id": run_id,
             "thread_id": thread_id,
             "run_type": run_type,
+            "run_scope": run_scope,
             "status": status,
             "user_input": sanitize_text(user_input),
             "answer": sanitize_text(answer),
