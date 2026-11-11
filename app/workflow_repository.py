@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 
 from app.database import session_scope
 from app.db_models import ApprovalRequest, SupportTicket
@@ -34,6 +34,8 @@ def _ticket_to_dict(ticket: SupportTicket) -> dict[str, Any]:
         "risk_level": ticket.risk_level,
         "status": ticket.status,
         "handoff_reason": ticket.handoff_reason,
+        "created_at": ticket.created_at.isoformat() if ticket.created_at else None,
+        "updated_at": ticket.updated_at.isoformat() if ticket.updated_at else None,
     }
 
 
@@ -50,6 +52,9 @@ def _approval_to_dict(approval: ApprovalRequest) -> dict[str, Any]:
         "review_comment": approval.review_comment,
         "reviewed_at": (
             approval.reviewed_at.isoformat() if approval.reviewed_at else None
+        ),
+        "requested_at": (
+            approval.requested_at.isoformat() if approval.requested_at else None
         ),
     }
 
@@ -87,6 +92,18 @@ def get_ticket(ticket_id: str) -> dict[str, Any] | None:
             )
         )
         return _ticket_to_dict(ticket) if ticket else None
+
+
+def list_tickets(
+    limit: int = 50,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        query = select(SupportTicket)
+        if status:
+            query = query.where(SupportTicket.status == status.strip().lower())
+        query = query.order_by(desc(SupportTicket.created_at)).limit(limit)
+        return [_ticket_to_dict(ticket) for ticket in session.scalars(query)]
 
 
 def create_refund_approval(
@@ -141,6 +158,18 @@ def get_approval(approval_id: str) -> dict[str, Any] | None:
             )
         )
         return _approval_to_dict(approval) if approval else None
+
+
+def list_approvals(
+    limit: int = 50,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        query = select(ApprovalRequest)
+        if status:
+            query = query.where(ApprovalRequest.status == status.strip().lower())
+        query = query.order_by(desc(ApprovalRequest.requested_at)).limit(limit)
+        return [_approval_to_dict(item) for item in session.scalars(query)]
 
 
 def apply_approval_decision(

@@ -38,3 +38,23 @@ def count_orders() -> int:
     with session_scope() as session:
         return int(session.scalar(select(func.count(Order.id))) or 0)
 
+
+def list_orders(limit: int = 50) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        orders = session.scalars(
+            select(Order).order_by(Order.id.desc()).limit(limit)
+        )
+        return [
+            {
+                "order_id": order.order_id,
+                "customer_name": order.customer_name,
+                "product_name": order.product_name,
+                "product_category": order.product_category,
+                "order_status": order.order_status,
+                "amount": float(order.amount),
+                "currency": order.currency,
+                "refund_status": order.refund_status,
+            }
+            for order in orders
+        ]
+

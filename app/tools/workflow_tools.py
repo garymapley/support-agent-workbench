@@ -3,9 +3,8 @@ from typing import Literal
 
 from langchain_core.tools import tool
 
-from app.approval_workflow import start_approval_workflow
+from app.approval_workflow import request_refund_approval_workflow
 from app.workflow_repository import (
-    create_refund_approval,
     create_support_ticket as create_ticket_record,
     escalate_ticket,
 )
@@ -32,17 +31,11 @@ def create_support_ticket(
 def request_refund_approval(ticket_id: str, reason: str) -> str:
     """为退款工单创建人工审批；此工具不会执行退款。"""
 
-    approval = create_refund_approval(ticket_id, reason)
-    paused = start_approval_workflow(approval["approval_id"])
-    interrupt_payloads = [
-        item.value for item in paused.get("__interrupt__", ())
-    ]
+    result = request_refund_approval_workflow(ticket_id, reason)
     return json.dumps(
         {
             "created": True,
-            "approval": approval,
-            "workflow_status": "paused_for_human",
-            "interrupts": interrupt_payloads,
+            **result,
             "message": "退款尚未执行，必须由人工审批并恢复工作流。",
         },
         ensure_ascii=False,

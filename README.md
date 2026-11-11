@@ -48,6 +48,22 @@ python -m scripts.ingest_knowledge
 python -m app.main
 ```
 
+也可以启动 FastAPI 后端：
+
+```powershell
+uvicorn app.api:app --reload
+```
+
+启动后访问：
+
+- Swagger API 测试页面：`http://127.0.0.1:8000/docs`
+- 健康检查：`http://127.0.0.1:8000/health`
+- Agent 对话：`POST /agent/runs`
+- 会话历史：`GET /agent/threads/{thread_id}/history`
+- 工单：`GET/POST /tickets`
+- 发起退款审批：`POST /tickets/{ticket_id}/refund-approval`
+- 人工审批：`POST /approvals/{approval_id}/decision`
+
 可以使用模拟订单 `A1001`、`A1002` 或 `A1003` 测试：
 
 ```text

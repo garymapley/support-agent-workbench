@@ -5,7 +5,11 @@ from langgraph.types import Command, interrupt
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.checkpointing import close_checkpointer, get_checkpointer
-from app.workflow_repository import apply_approval_decision, get_approval
+from app.workflow_repository import (
+    apply_approval_decision,
+    create_refund_approval,
+    get_approval,
+)
 
 
 class ApprovalState(TypedDict, total=False):
@@ -99,6 +103,23 @@ def resume_approval_workflow(
         ),
         config=approval_config(approval_id.strip().upper()),
     )
+
+
+def request_refund_approval_workflow(
+    ticket_id: str,
+    reason: str,
+) -> dict:
+    """幂等创建退款审批，并确保流程已经暂停在人工审核节点。"""
+
+    approval = create_refund_approval(ticket_id, reason)
+    paused = start_approval_workflow(approval["approval_id"])
+    return {
+        "approval": approval,
+        "workflow_status": "paused_for_human",
+        "interrupts": [
+            item.value for item in paused.get("__interrupt__", ())
+        ],
+    }
 
 
 def close_approval_workflow() -> None:
