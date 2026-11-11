@@ -1,5 +1,21 @@
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
+
+# 测试使用独立临时库，避免污染 data/app.db
+_TEST_DIR = os.path.join(
+    tempfile.gettempdir(), f"support-agent-tests-{os.getpid()}"
+)
+os.makedirs(_TEST_DIR, exist_ok=True)
+os.environ.setdefault(
+    "DATABASE_URL",
+    f"sqlite:///{_TEST_DIR.replace(os.sep, '/')}/app.db",
+)
+os.environ.setdefault(
+    "CHECKPOINT_DATABASE_PATH", f"{_TEST_DIR}/checkpoints.db"
+)
+os.environ.setdefault("LOG_PATH", f"{_TEST_DIR}/agent.jsonl")
 
 from fastapi import HTTPException
 from langchain_core.messages import AIMessage

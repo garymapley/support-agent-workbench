@@ -1,5 +1,21 @@
 import json
+import os
+import tempfile
 import unittest
+
+# 测试使用独立临时库，避免污染 data/app.db
+_TEST_DIR = os.path.join(
+    tempfile.gettempdir(), f"support-agent-tests-{os.getpid()}"
+)
+os.makedirs(_TEST_DIR, exist_ok=True)
+os.environ.setdefault(
+    "DATABASE_URL",
+    f"sqlite:///{_TEST_DIR.replace(os.sep, '/')}/app.db",
+)
+os.environ.setdefault(
+    "CHECKPOINT_DATABASE_PATH", f"{_TEST_DIR}/checkpoints.db"
+)
+os.environ.setdefault("LOG_PATH", f"{_TEST_DIR}/agent.jsonl")
 
 from app.tools.workflow_tools import get_approval_status
 from app.workflow_repository import assess_risk
@@ -11,6 +27,16 @@ class WorkflowRiskTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         prepare_database()
+
+    def test_ticket_records_agent_thread(self) -> None:
+        ticket = create_support_ticket(
+            "A1001",
+            "other",
+            "验证工单与会话的关联",
+            "diagnose",
+            thread_id="agent:test-thread",
+        )
+        self.assertEqual(ticket["thread_id"], "agent:test-thread")
 
     def test_high_value_refund_is_high_risk(self) -> None:
         order = {"amount": 529, "refund_status": "none"}

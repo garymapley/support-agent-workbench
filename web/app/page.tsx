@@ -72,6 +72,7 @@ export default function WorkbenchPage() {
   const [reviewer, setReviewer] = useState("售后值班主管");
   const [comment, setComment] = useState("");
   const [handoffReason, setHandoffReason] = useState("需要人工专员核实客户诉求并跟进。");
+  const [apiOnline, setApiOnline] = useState<boolean | null>(null);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -84,7 +85,12 @@ export default function WorkbenchPage() {
       setSummary(summaryData);
       setRuns(runData);
       setLoadState(ticketData.length ? "full" : "empty");
-      setSelectedId((current) => current && ticketData.some((ticket) => ticket.ticket_id === current) ? current : ticketData[0]?.ticket_id ?? null);
+      const preferredId = new URLSearchParams(window.location.search).get("ticket");
+      setSelectedId((current) => {
+        if (current && ticketData.some((ticket) => ticket.ticket_id === current)) return current;
+        if (preferredId && ticketData.some((ticket) => ticket.ticket_id === preferredId)) return preferredId;
+        return ticketData[0]?.ticket_id ?? null;
+      });
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "工作台数据加载失败。");
       setLoadState("error");
@@ -95,6 +101,24 @@ export default function WorkbenchPage() {
     const timer = window.setTimeout(() => void loadWorkspace(), 0);
     return () => window.clearTimeout(timer);
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        await api.health();
+        if (!cancelled) setApiOnline(true);
+      } catch {
+        if (!cancelled) setApiOnline(false);
+      }
+    };
+    void probe();
+    const timer = window.setInterval(() => void probe(), 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const filteredTickets = useMemo(() => tickets.filter((ticket) => {
     const matchesFilter = filter === "all"
@@ -112,7 +136,9 @@ export default function WorkbenchPage() {
   const loadHistory = useCallback(async (ticketId: string) => {
     const approval = approvals.find((item) => item.ticket_id === ticketId);
     const stored = window.localStorage.getItem(ticketThreadKey(ticketId));
-    const threadId = stored ?? approval?.thread_id?.replace(/^agent:/, "");
+    const ticketThread = tickets.find((ticket) => ticket.ticket_id === ticketId)?.thread_id;
+    const rawThread = stored ?? ticketThread ?? approval?.thread_id ?? "";
+    const threadId = rawThread.replace(/^agent:/, "");
     if (!threadId) {
       setHistory([]);
       return;
@@ -123,7 +149,7 @@ export default function WorkbenchPage() {
     } catch {
       setHistory([]);
     }
-  }, [approvals]);
+  }, [approvals, tickets]);
 
   useEffect(() => {
     if (selectedId) {
@@ -212,7 +238,7 @@ export default function WorkbenchPage() {
           <div><strong>售后工单工作台</strong><span>Agent 处理与人工审批</span></div>
         </div>
         <div className="topbar-status" role="status">
-          <span className="connection" data-error={loadState === "error"}><span aria-hidden="true" />{loadState === "error" ? "FastAPI 未连接" : "FastAPI 已连接"}</span>
+          <span className="connection" data-error={apiOnline === false}><span aria-hidden="true" />{apiOnline === null ? "正在连接 FastAPI" : apiOnline ? "FastAPI 已连接" : "FastAPI 未连接"}</span>
           <button className="icon-button" type="button" onClick={refreshWorkspace} aria-label="刷新工作台" disabled={loadState === "loading"}>
             <RefreshCw size={18} className={loadState === "loading" ? "spin" : ""} />
           </button>

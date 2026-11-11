@@ -15,6 +15,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  health: () => request<{ status: string }>("/health"),
   tickets: () => request<Ticket[]>("/tickets?limit=100"),
   approvals: () => request<Approval[]>("/approvals?limit=100"),
   orders: () => request<Order[]>("/orders?limit=100"),

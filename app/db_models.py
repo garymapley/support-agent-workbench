@@ -51,6 +51,9 @@ class SupportTicket(Base):
     risk_level: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="open")
     handoff_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    thread_id: Mapped[str | None] = mapped_column(
+        String(160), index=True, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

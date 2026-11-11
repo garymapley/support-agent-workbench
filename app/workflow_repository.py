@@ -34,6 +34,7 @@ def _ticket_to_dict(ticket: SupportTicket) -> dict[str, Any]:
         "risk_level": ticket.risk_level,
         "status": ticket.status,
         "handoff_reason": ticket.handoff_reason,
+        "thread_id": ticket.thread_id,
         "created_at": ticket.created_at.isoformat() if ticket.created_at else None,
         "updated_at": ticket.updated_at.isoformat() if ticket.updated_at else None,
     }
@@ -89,6 +90,7 @@ def create_support_ticket(
         description=normalized_description,
         proposed_action=normalized_action,
         risk_level=assess_risk(order, normalized_action),
+        thread_id=thread_id or None,
         status="open",
     )
     with session_scope() as session:

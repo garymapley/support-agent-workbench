@@ -7,4 +7,6 @@ __pycache__/
 data/
 .tmp/
 logs/
+.workbuddy/
+.hallmark/
 
