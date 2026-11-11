@@ -33,6 +33,13 @@ def rebuild_policy_collection() -> None:
     if client.collection_exists(settings.qdrant_collection):
         client.delete_collection(settings.qdrant_collection)
 
+    if client.collection_exists(settings.qdrant_collection):
+        raise RuntimeError(
+            f"集合 {settings.qdrant_collection} 删除后仍然存在，"
+            "很可能有另一个进程正占用 Qdrant 索引目录。"
+            "请先停止后端服务，删除 data/qdrant 目录后重新导入。"
+        )
+
     client.create_collection(
         collection_name=settings.qdrant_collection,
         vectors_config=models.VectorParams(

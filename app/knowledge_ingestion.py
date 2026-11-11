@@ -43,9 +43,21 @@ def ingest_knowledge(knowledge_dir: Path = Path("knowledge")) -> int:
             )
         )
 
-    get_qdrant_client().upsert(
+    client = get_qdrant_client()
+    client.upsert(
         collection_name=settings.qdrant_collection,
         points=points,
         wait=True,
     )
+
+    stored = client.count(
+        collection_name=settings.qdrant_collection,
+        exact=True,
+    ).count
+    if stored != len(points):
+        raise RuntimeError(
+            f"索引点数校验失败：写入 {len(points)} 块，集合中实际 {stored} 块。"
+            "说明存在旧索引残留，检索会同时返回新旧两版政策。"
+            "请停止后端服务、删除 data/qdrant 目录后重新导入。"
+        )
     return len(points)
