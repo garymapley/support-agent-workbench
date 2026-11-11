@@ -2,7 +2,7 @@
 
 当前里程碑：Agent 已具备订单查询、政策 RAG、工单创建、风险判断和可暂停/恢复的人工退款审批。
 
-主 Agent 对话和退款审批共用 SQLite checkpointer，并通过不同 `thread_id` 隔离。创建退款审批时会立即启动审批线程并暂停等待人工处理。模型、Embedding 和远程 Qdrant 查询均配置了超时与有限重试；创建工单、创建审批等写操作不会自动重试。
+退款审批已经接入主 Agent 图：退款工单会由代码规则自动创建审批，原对话通过 `interrupt()` 暂停，人工决定后使用同一个 `thread_id` 恢复。模型、Embedding 和远程 Qdrant 查询均配置了超时与有限重试；创建工单、创建审批等写操作不会自动重试。
 
 默认模型：
 
@@ -10,10 +10,12 @@
 - Embedding：`qwen3.7-text-embedding-flash`（1024 维）
 - 向量库：Qdrant 本地持久化模式
 
-## 1. 激活虚拟环境
+## 1. 使用项目虚拟环境
+
+本项目可以直接调用虚拟环境中的 Python，不依赖 PowerShell 激活脚本：
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\python.exe --version
 ```
 
 ## 2. 配置千问 API
@@ -37,7 +39,7 @@ DASHSCOPE_API_KEY=sk-your-key-here
 首次运行前，先将 `knowledge/` 中的演示政策导入 Qdrant：
 
 ```powershell
-python -m scripts.ingest_knowledge
+.\.venv\Scripts\python.exe -m scripts.ingest_knowledge
 ```
 
 导入会重建本项目的 `support_policies` Collection。如果 Agent 正在运行，请先退出 Agent 再重新导入。
@@ -45,13 +47,13 @@ python -m scripts.ingest_knowledge
 然后启动 Agent：
 
 ```powershell
-python -m app.main
+.\.venv\Scripts\python.exe -m app.main
 ```
 
 也可以启动 FastAPI 后端：
 
 ```powershell
-uvicorn app.api:app --reload
+.\.venv\Scripts\python.exe -m uvicorn app.api:app --reload
 ```
 
 启动后访问：
@@ -76,37 +78,43 @@ uvicorn app.api:app --reload
 命令行输入 -> LangGraph -> 聊天模型
                                |-> get_order -> SQLAlchemy -> SQLite
                                |-> search_policy -> Embedding -> Qdrant
-                               |-> create_support_ticket -> SQLite
-                               |-> request_refund_approval -> 人工暂停/恢复
+                               |-> create_support_ticket -> SQLite（退款自动建审批）
+                               |-> await_approval -> interrupt -> 人工决定
                                -> 聊天模型 -> 带政策来源的回答
 ```
 
-首次运行时会自动创建 `data/app.db` 和三条演示订单。重复启动不会重复插入。
+首次运行时会自动创建 `data/app.db` 和三条相对日期的演示订单。重复启动不会重复插入。`knowledge/` 包含 17 篇虚构政策，其中 1 篇已失效，用于验证 RAG 的生效状态过滤。
 
 运行无需 API 的本地工具测试：
 
 ```powershell
-python -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
 运行一次需要真实 API 的端到端冒烟测试：
 
 ```powershell
-python -m scripts.smoke_test_agent
+.\.venv\Scripts\python.exe -m scripts.smoke_test_agent
 ```
 
 运行订单 + RAG 联合冒烟测试：
 
 ```powershell
-python -m scripts.smoke_test_rag
+.\.venv\Scripts\python.exe -m scripts.smoke_test_rag
 ```
 
 运行不调用模型的人工审批冒烟测试：
 
 ```powershell
-python -m scripts.smoke_test_approval
+.\.venv\Scripts\python.exe -m scripts.smoke_test_approval
 ```
 
-审批演示会创建高风险退款工单，在 LangGraph 的人工节点暂停，再模拟主管审批并从 SQLite 检查点恢复。审批通过后的状态是 `approved_pending_execution`，项目不会执行真实退款。
+运行需要真实模型的主图审批闭环测试：
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.smoke_test_main_graph_approval
+```
+
+审批演示会创建高风险退款工单，在主 LangGraph 的人工节点暂停，再模拟主管审批并从同一个 SQLite thread 检查点恢复。审批通过后的状态是 `approved_pending_execution`，项目不会执行真实退款。
 
 `knowledge/` 中的政策全部是演示数据，不代表真实企业承诺。后续计划见 [ROADMAP.md](ROADMAP.md)。

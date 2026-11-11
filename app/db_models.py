@@ -73,6 +73,9 @@ class ApprovalRequest(Base):
         nullable=False,
     )
     order_id: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    thread_id: Mapped[str | None] = mapped_column(
+        String(160), index=True, nullable=True
+    )
     action_type: Mapped[str] = mapped_column(String(50), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)

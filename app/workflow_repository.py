@@ -44,6 +44,7 @@ def _approval_to_dict(approval: ApprovalRequest) -> dict[str, Any]:
         "approval_id": approval.approval_id,
         "ticket_id": approval.ticket_id,
         "order_id": approval.order_id,
+        "thread_id": approval.thread_id,
         "action_type": approval.action_type,
         "amount": float(approval.amount),
         "reason": approval.reason,
@@ -64,24 +65,46 @@ def create_support_ticket(
     issue_type: str,
     description: str,
     proposed_action: str,
+    thread_id: str | None = None,
 ) -> dict[str, Any]:
     order = find_order_by_id(order_id)
     if order is None:
         raise ValueError(f"订单 {order_id.strip().upper()} 不存在")
 
+    ticket_id = f"TKT-{uuid4().hex[:8].upper()}"
+    normalized_action = proposed_action.strip().lower()
     ticket = SupportTicket(
-        ticket_id=f"TKT-{uuid4().hex[:8].upper()}",
+        ticket_id=ticket_id,
         order_id=order["order_id"],
         issue_type=issue_type.strip().lower(),
         description=description.strip(),
-        proposed_action=proposed_action.strip().lower(),
+        proposed_action=normalized_action,
         risk_level=assess_risk(order, proposed_action),
         status="open",
     )
     with session_scope() as session:
         session.add(ticket)
         session.flush()
-        return _ticket_to_dict(ticket)
+        result = _ticket_to_dict(ticket)
+        if normalized_action == "refund":
+            if not thread_id:
+                raise ValueError("退款工单必须关联 Agent thread_id")
+            approval = ApprovalRequest(
+                approval_id=f"APR-{uuid4().hex[:8].upper()}",
+                ticket_id=ticket_id,
+                order_id=order["order_id"],
+                thread_id=thread_id,
+                action_type="refund",
+                amount=order["amount"],
+                reason="退款工单由代码规则强制进入人工审批。",
+                status="pending",
+            )
+            ticket.status = "pending_approval"
+            session.add(approval)
+            session.flush()
+            result = _ticket_to_dict(ticket)
+            result["approval"] = _approval_to_dict(approval)
+        return result
 
 
 def get_ticket(ticket_id: str) -> dict[str, Any] | None:
@@ -109,6 +132,7 @@ def list_tickets(
 def create_refund_approval(
     ticket_id: str,
     reason: str,
+    thread_id: str,
 ) -> dict[str, Any]:
     normalized_id = ticket_id.strip().upper()
     with session_scope() as session:
@@ -129,6 +153,11 @@ def create_refund_approval(
             )
         )
         if existing:
+            if existing.thread_id and existing.thread_id != thread_id:
+                raise ValueError("该工单的待审批已关联到另一段 Agent 对话")
+            if not existing.thread_id:
+                existing.thread_id = thread_id
+                session.flush()
             return _approval_to_dict(existing)
 
         order = find_order_by_id(ticket.order_id)
@@ -139,6 +168,7 @@ def create_refund_approval(
             approval_id=f"APR-{uuid4().hex[:8].upper()}",
             ticket_id=ticket.ticket_id,
             order_id=ticket.order_id,
+            thread_id=thread_id,
             action_type="refund",
             amount=order["amount"],
             reason=reason.strip(),
@@ -156,6 +186,21 @@ def get_approval(approval_id: str) -> dict[str, Any] | None:
             select(ApprovalRequest).where(
                 ApprovalRequest.approval_id == approval_id.strip().upper()
             )
+        )
+        return _approval_to_dict(approval) if approval else None
+
+
+def get_latest_approval_for_ticket(
+    ticket_id: str,
+) -> dict[str, Any] | None:
+    with session_scope() as session:
+        approval = session.scalar(
+            select(ApprovalRequest)
+            .where(
+                ApprovalRequest.ticket_id == ticket_id.strip().upper()
+            )
+            .order_by(desc(ApprovalRequest.requested_at))
+            .limit(1)
         )
         return _approval_to_dict(approval) if approval else None
 

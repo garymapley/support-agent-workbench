@@ -19,12 +19,22 @@ class AgentRunRequest(ApiModel):
 
 class AgentRunResponse(ApiModel):
     thread_id: str
+    status: Literal["completed", "waiting_for_approval"]
+    waiting_for_approval: bool
+    approval_id: str | None = None
+    interrupt: dict[str, Any] | None = None
     answer: str
     tool_calls: list[dict[str, Any]]
     tool_results: list[dict[str, Any]]
 
 
 class TicketCreateRequest(ApiModel):
+    thread_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
     order_id: str = Field(min_length=1, max_length=32)
     issue_type: Literal[
         "refund", "warranty", "logistics", "quality", "other"
@@ -42,6 +52,12 @@ class TicketCreateRequest(ApiModel):
 
 class RefundApprovalRequest(ApiModel):
     reason: str = Field(min_length=1, max_length=2000)
+    thread_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
 
 
 class ApprovalDecisionRequest(ApiModel):

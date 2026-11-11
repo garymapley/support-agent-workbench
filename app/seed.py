@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -7,6 +7,8 @@ from app.database import session_scope
 from app.db_models import Order
 
 
+_today = date.today()
+
 SEED_ORDERS = [
     {
         "order_id": "A1001",
@@ -14,7 +16,7 @@ SEED_ORDERS = [
         "product_name": "Aurora X1 无线耳机",
         "product_category": "electronics",
         "order_status": "delivered",
-        "delivered_at": date(2026, 11, 9),
+        "delivered_at": _today - timedelta(days=2),
         "amount": Decimal("299.00"),
         "currency": "CNY",
         "refund_status": "none",
@@ -25,7 +27,7 @@ SEED_ORDERS = [
         "product_name": "Nova Pro 机械键盘",
         "product_category": "electronics",
         "order_status": "shipped",
-        "shipped_at": date(2026, 11, 10),
+        "shipped_at": _today - timedelta(days=3),
         "amount": Decimal("459.00"),
         "currency": "CNY",
         "refund_status": "none",
@@ -36,7 +38,7 @@ SEED_ORDERS = [
         "product_name": "CloudFit 运动鞋",
         "product_category": "apparel",
         "order_status": "refund_pending",
-        "delivered_at": date(2026, 11, 1),
+        "delivered_at": _today - timedelta(days=10),
         "amount": Decimal("529.00"),
         "currency": "CNY",
         "refund_status": "pending_manual_approval",
@@ -61,6 +63,14 @@ def seed_orders() -> int:
 
         for order_data in SEED_ORDERS:
             if order_data["order_id"] in existing_ids:
+                existing = session.scalar(
+                    select(Order).where(
+                        Order.order_id == order_data["order_id"]
+                    )
+                )
+                if existing is not None:
+                    existing.shipped_at = order_data.get("shipped_at")
+                    existing.delivered_at = order_data.get("delivered_at")
                 continue
             session.add(Order(**order_data))
             inserted += 1

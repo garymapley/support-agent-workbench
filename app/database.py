@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
@@ -61,4 +61,36 @@ def initialize_database() -> None:
     from app import db_models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _migrate_existing_sqlite_schema()
+
+
+def _migrate_existing_sqlite_schema() -> None:
+    """为已有演示数据库执行向后兼容的小型迁移。"""
+
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    inspector = inspect(engine)
+    if "approval_requests" not in inspector.get_table_names():
+        return
+    column_names = {
+        column["name"]
+        for column in inspector.get_columns("approval_requests")
+    }
+    if "thread_id" not in column_names:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE approval_requests "
+                    "ADD COLUMN thread_id VARCHAR(160)"
+                )
+            )
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_approval_requests_thread_id "
+                "ON approval_requests (thread_id)"
+            )
+        )
 

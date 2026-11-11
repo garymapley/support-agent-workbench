@@ -11,13 +11,11 @@ from app.api import (
     get_agent_history,
     get_order,
     health,
-    request_refund_approval,
     run_agent,
 )
 from app.api_schemas import (
     AgentRunRequest,
     ApprovalDecisionRequest,
-    RefundApprovalRequest,
     TicketCreateRequest,
 )
 from app.seed import prepare_database
@@ -51,13 +49,24 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(ticket["risk_level"], "high")
 
-        approval_result = request_refund_approval(
-            ticket["ticket_id"],
-            RefundApprovalRequest(reason="高金额退款需要主管审批"),
-        )
+        approval_result = {
+            "approval": ticket["approval"],
+            "agent_run": ticket["agent_run"],
+        }
         self.assertEqual(
-            approval_result["workflow_status"], "paused_for_human"
+            approval_result["agent_run"]["status"],
+            "waiting_for_approval",
         )
+        self.assertTrue(
+            approval_result["agent_run"]["waiting_for_approval"]
+        )
+        waiting_run = run_agent(
+            AgentRunRequest(
+                thread_id=approval_result["agent_run"]["thread_id"],
+                message="审批通过了吗？",
+            )
+        )
+        self.assertEqual(waiting_run.status, "waiting_for_approval")
         approval_id = approval_result["approval"]["approval_id"]
 
         decision = decide_approval(
@@ -70,6 +79,8 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(decision["approval"]["status"], "rejected")
         self.assertEqual(decision["ticket"]["status"], "approval_rejected")
+        self.assertEqual(decision["agent_run"]["status"], "completed")
+        self.assertFalse(decision["agent_run"]["waiting_for_approval"])
 
         with self.assertRaises(HTTPException) as context:
             decide_approval(
@@ -93,6 +104,8 @@ class ApiTests(unittest.TestCase):
             )
         )
         self.assertEqual(result.thread_id, "api-test-thread")
+        self.assertEqual(result.status, "completed")
+        self.assertFalse(result.waiting_for_approval)
         self.assertEqual(result.answer, "已收到，我会继续处理。")
         config = invoke.call_args.kwargs["config"]
         self.assertEqual(

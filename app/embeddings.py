@@ -27,13 +27,21 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         return []
 
     settings = get_settings()
-    response = get_embedding_client().embeddings.create(
-        model=settings.embedding_model,
-        input=texts,
-        dimensions=settings.embedding_dimensions,
-        encoding_format="float",
-    )
-    return [item.embedding for item in sorted(response.data, key=lambda x: x.index)]
+    embeddings: list[list[float]] = []
+    batch_size = 10
+    for start in range(0, len(texts), batch_size):
+        batch = texts[start : start + batch_size]
+        response = get_embedding_client().embeddings.create(
+            model=settings.embedding_model,
+            input=batch,
+            dimensions=settings.embedding_dimensions,
+            encoding_format="float",
+        )
+        embeddings.extend(
+            item.embedding
+            for item in sorted(response.data, key=lambda x: x.index)
+        )
+    return embeddings
 
 
 def embed_query(query: str) -> list[float]:
