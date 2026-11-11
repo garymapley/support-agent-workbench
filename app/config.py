@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: float = 20.0
     qdrant_timeout_seconds: float = 10.0
     external_read_attempts: int = 3
+    chat_input_cost_per_million_cny: float = 0.0
+    chat_output_cost_per_million_cny: float = 0.0
+    log_path: str = "./logs/agent.jsonl"
 
     model_config = SettingsConfigDict(
         env_file=".env",

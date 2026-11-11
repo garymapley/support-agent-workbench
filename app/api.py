@@ -1,9 +1,10 @@
 import json
 from contextlib import asynccontextmanager
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
 
@@ -19,7 +20,9 @@ from app.execution_guard import ThreadBusyError, guard_thread
 from app.graph import graph
 from app.order_repository import find_order_by_id, list_orders
 from app.qdrant_store import close_qdrant_client
+from app.run_repository import list_runs, summarize_runs
 from app.seed import prepare_database
+from app.telemetry import configure_logging, logger, record_run
 from app.workflow_repository import (
     create_support_ticket,
     create_refund_approval,
@@ -33,6 +36,7 @@ from app.workflow_repository import (
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     prepare_database()
+    configure_logging()
     yield
     close_qdrant_client()
     close_checkpointer()
@@ -40,10 +44,37 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="企业售后工单 Agent API",
-    version="0.7.0",
+    version="0.8.0",
     description="订单查询、售后 Agent、工单与人工退款审批接口。",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def request_observability(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or uuid4().hex
+    started = perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception(
+            "http_request_failed",
+            extra={
+                "run_id": request_id,
+                "latency_ms": round((perf_counter() - started) * 1000, 2),
+            },
+        )
+        raise
+    response.headers["X-Request-ID"] = request_id
+    logger.info(
+        "http_request",
+        extra={
+            "run_id": request_id,
+            "status": str(response.status_code),
+            "latency_ms": round((perf_counter() - started) * 1000, 2),
+        },
+    )
+    return response
 
 
 def _agent_config(thread_id: str) -> dict[str, Any]:
@@ -163,11 +194,16 @@ def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
     from langchain_core.messages import HumanMessage
 
     thread_id = payload.thread_id or uuid4().hex
+    started = perf_counter()
+    starting_message_count = 0
     try:
         stored_thread_id = f"agent:{thread_id}"
         with guard_thread(stored_thread_id):
             config = _agent_config(thread_id)
             snapshot = graph.get_state(config)
+            starting_message_count = len(
+                snapshot.values.get("messages", [])
+            )
             current = _snapshot_result(snapshot)
             if current["__interrupt__"]:
                 result = current
@@ -177,17 +213,48 @@ def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
                     config=config,
                 )
     except ThreadBusyError as exc:
+        record_run(
+            thread_id=stored_thread_id,
+            run_type="agent_message",
+            status="failed",
+            user_input=payload.message,
+            answer="该对话正在处理另一条请求。",
+            messages=[],
+            latency_ms=(perf_counter() - started) * 1000,
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="该对话正在处理另一条请求，请稍后重试。",
         ) from exc
     except Exception as exc:
+        record_run(
+            thread_id=f"agent:{thread_id}",
+            run_type="agent_message",
+            status="failed",
+            user_input=payload.message,
+            answer="Agent 运行失败。",
+            messages=[],
+            latency_ms=(perf_counter() - started) * 1000,
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Agent 运行失败，请稍后重试或转交人工。",
         ) from exc
 
-    return _format_agent_result(result, thread_id)
+    response = _format_agent_result(result, thread_id)
+    new_messages = result.get("messages", [])[starting_message_count:]
+    response.run_id = record_run(
+        thread_id=f"agent:{thread_id}",
+        run_type="agent_message",
+        status=response.status,
+        user_input=payload.message,
+        answer=response.answer,
+        messages=new_messages,
+        latency_ms=(perf_counter() - started) * 1000,
+    )
+    return response
 
 
 @app.get("/agent/threads/{thread_id}/history", tags=["agent"])
@@ -302,6 +369,18 @@ def get_approvals(
     return list_approvals(limit, approval_status)
 
 
+@app.get("/observability/runs", tags=["observability"])
+def get_run_records(
+    limit: int = Query(50, ge=1, le=200),
+) -> list[dict[str, Any]]:
+    return list_runs(limit)
+
+
+@app.get("/observability/summary", tags=["observability"])
+def get_run_summary() -> dict[str, Any]:
+    return summarize_runs()
+
+
 @app.get("/approvals/{approval_id}", tags=["approvals"])
 def get_approval_by_id(approval_id: str) -> dict[str, Any]:
     approval = get_approval(approval_id)
@@ -327,12 +406,17 @@ def decide_approval(
             status_code=409,
             detail="旧审批没有关联 Agent 对话，无法恢复。",
         )
+    started = perf_counter()
+    starting_message_count = 0
     try:
         with guard_thread(stored_thread_id):
             snapshot = graph.get_state(
                 _stored_thread_config(stored_thread_id)
             )
             current = _snapshot_result(snapshot)
+            starting_message_count = len(
+                snapshot.values.get("messages", [])
+            )
             if not current["__interrupt__"]:
                 raise HTTPException(
                     status_code=409,
@@ -349,11 +433,21 @@ def decide_approval(
 
     updated = get_approval(approval_id)
     ticket = get_ticket(approval["ticket_id"])
+    agent_response = _format_agent_result(
+        result,
+        _public_thread_id(stored_thread_id),
+    )
+    agent_response.run_id = record_run(
+        thread_id=stored_thread_id,
+        run_type="approval_resume",
+        status=agent_response.status,
+        user_input=f"{approval_id}:{payload.decision}",
+        answer=agent_response.answer,
+        messages=result.get("messages", [])[starting_message_count:],
+        latency_ms=(perf_counter() - started) * 1000,
+    )
     return {
         "approval": updated,
         "ticket": ticket,
-        "agent_run": _format_agent_result(
-            result,
-            _public_thread_id(stored_thread_id),
-        ).model_dump(),
+        "agent_run": agent_response.model_dump(),
     }

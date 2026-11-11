@@ -72,14 +72,25 @@ def create_support_ticket(
         raise ValueError(f"订单 {order_id.strip().upper()} 不存在")
 
     ticket_id = f"TKT-{uuid4().hex[:8].upper()}"
+    normalized_issue_type = issue_type.strip().lower()
     normalized_action = proposed_action.strip().lower()
+    normalized_description = description.strip()
+    explicit_refund_request = (
+        normalized_issue_type == "refund"
+        or normalized_action == "refund"
+        or "退款" in normalized_description
+        or "refund" in normalized_description.lower()
+    )
+    if explicit_refund_request:
+        normalized_issue_type = "refund"
+        normalized_action = "refund"
     ticket = SupportTicket(
         ticket_id=ticket_id,
         order_id=order["order_id"],
-        issue_type=issue_type.strip().lower(),
-        description=description.strip(),
+        issue_type=normalized_issue_type,
+        description=normalized_description,
         proposed_action=normalized_action,
-        risk_level=assess_risk(order, proposed_action),
+        risk_level=assess_risk(order, normalized_action),
         status="open",
     )
     with session_scope() as session:

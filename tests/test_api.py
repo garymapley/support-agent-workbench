@@ -10,6 +10,8 @@ from app.api import (
     decide_approval,
     get_agent_history,
     get_order,
+    get_run_records,
+    get_run_summary,
     health,
     run_agent,
 )
@@ -107,6 +109,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(result.status, "completed")
         self.assertFalse(result.waiting_for_approval)
         self.assertEqual(result.answer, "已收到，我会继续处理。")
+        self.assertIsNotNone(result.run_id)
         config = invoke.call_args.kwargs["config"]
         self.assertEqual(
             config["configurable"]["thread_id"],
@@ -116,6 +119,14 @@ class ApiTests(unittest.TestCase):
     def test_empty_thread_history(self) -> None:
         result = get_agent_history("not-started-thread")
         self.assertEqual(result["messages"], [])
+
+    def test_observability_endpoints(self) -> None:
+        summary = get_run_summary()
+        self.assertGreaterEqual(summary["run_count"], 1)
+        self.assertIn("average_latency_ms", summary)
+        runs = get_run_records(limit=10)
+        self.assertTrue(runs)
+        self.assertIn("run_id", runs[0])
 
 
 if __name__ == "__main__":

@@ -43,6 +43,17 @@ SEED_ORDERS = [
         "currency": "CNY",
         "refund_status": "pending_manual_approval",
     },
+    {
+        "order_id": "A1004",
+        "customer_name": "赵六",
+        "product_name": "VisionMax 4K 显示器",
+        "product_category": "electronics",
+        "order_status": "delivered",
+        "delivered_at": _today - timedelta(days=4),
+        "amount": Decimal("899.00"),
+        "currency": "CNY",
+        "refund_status": "none",
+    },
 ]
 
 

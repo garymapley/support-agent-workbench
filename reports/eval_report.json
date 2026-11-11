@@ -1,0 +1,293 @@
+{
+  "generated_at": "2026-11-11T17:49:38",
+  "summary": {
+    "case_count": 8,
+    "tool_accuracy": 1.0,
+    "policy_compliance_rate": 1.0,
+    "average_latency_ms": 4479.66,
+    "total_tokens": 33397,
+    "estimated_cost_cny": null
+  },
+  "results": [
+    {
+      "id": "missing_order_id",
+      "thread_id": "eval-3d9e3840-missing_order_id",
+      "run_id": "39ebc15504d64e019df0b5477b999bb2",
+      "actual_tools": [],
+      "required_tools": [],
+      "tool_correct": true,
+      "status": "completed",
+      "status_ok": true,
+      "citation_ok": true,
+      "retrieved_citations": [],
+      "approval_ok": true,
+      "forbidden_phrases_ok": true,
+      "policy_compliant": true,
+      "latency_ms": 3777.17,
+      "total_tokens": 1415,
+      "estimated_cost_cny": null,
+      "answer": "您好，很理解您的情况。为帮您判断是否可以保修或换新，我需要先核实订单信息。\n\n请补充以下内容：\n1. **订单号**（例如 A1001，可在平台订单详情页找到）\n2. 故障现象（如单边无声、无法充电、连接中断等）\n3. 是否在保修期内、有无人为损坏（如进水、摔落）\n\n收到订单号后，我会先查询订单的购买与保修状态，并检索公司的保修政策，再告知您可以走保修、换货还是维修流程。"
+    },
+    {
+      "id": "order_status",
+      "thread_id": "eval-3d9e3840-order_status",
+      "run_id": "99c99660c18845a9b0cbf3ece3fcebca",
+      "actual_tools": [
+        "get_order"
+      ],
+      "required_tools": [
+        "get_order"
+      ],
+      "tool_correct": true,
+      "status": "completed",
+      "status_ok": true,
+      "citation_ok": true,
+      "retrieved_citations": [],
+      "approval_ok": true,
+      "forbidden_phrases_ok": true,
+      "policy_compliant": true,
+      "latency_ms": 1877.49,
+      "total_tokens": 2548,
+      "estimated_cost_cny": null,
+      "answer": "订单 A1002 当前状态如下：\n\n- 商品：Nova Pro 机械键盘（电子类）\n- 客户：李四\n- 订单状态：已发货（shipped）\n- 发货时间：2026-11-08\n- 签收时间：暂无（未签收）\n- 订单金额：459.00 CNY\n- 退款状态：无退款\n\n本次仅做状态查询，未做其他处理。"
+    },
+    {
+      "id": "warranty_consultation",
+      "thread_id": "eval-3d9e3840-warranty_consultation",
+      "run_id": "67ac3cf779974d2989fe433d280cc33c",
+      "actual_tools": [
+        "get_order",
+        "search_policy"
+      ],
+      "required_tools": [
+        "get_order",
+        "search_policy"
+      ],
+      "tool_correct": true,
+      "status": "completed",
+      "status_ok": true,
+      "citation_ok": true,
+      "retrieved_citations": [
+        [
+          "warranty_policy.md",
+          "1.0"
+        ],
+        [
+          "accessories_warranty_policy.md",
+          "1.0"
+        ],
+        [
+          "warranty_policy.md",
+          "2.0"
+        ],
+        [
+          "accessories_warranty_policy.md",
+          "1.0"
+        ]
+      ],
+      "approval_ok": true,
+      "forbidden_phrases_ok": true,
+      "policy_compliant": true,
+      "latency_ms": 4561.18,
+      "total_tokens": 4358,
+      "estimated_cost_cny": null,
+      "answer": "订单 A1001（Aurora X1 无线耳机，已于 2026-11-09 签收）的保修期情况如下：\n\n**保修期限：自签收日起 12 个月**，即约至 **2027-11-09**。\n- 依据：`warranty_policy.md`《演示商城电子产品保修政策》version 1.0；《演示商城电子产品保修总则》version 2.0 同样为 12 个月。\n- 保修范围：正常使用情况下的功能性故障。\n- 不在保修范围内：人为摔损、进液、私自拆解、使用非规定电压，以及超过保修期的故障；此类情况需检测后由人工客服确认是否付费维修。\n\n提示：以上为演示政策内容，非真实企业承诺。如需申报故障，可提供订单号与故障视频，我再为您走检测流程。按您要求，本次未创建工单。"
+    },
+    {
+      "id": "logistics_delay",
+      "thread_id": "eval-3d9e3840-logistics_delay",
+      "run_id": "c832fb8b379340b79b62138118cb08f3",
+      "actual_tools": [
+        "get_order",
+        "search_policy",
+        "create_support_ticket"
+      ],
+      "required_tools": [
+        "get_order",
+        "search_policy"
+      ],
+      "tool_correct": true,
+      "status": "completed",
+      "status_ok": true,
+      "citation_ok": true,
+      "retrieved_citations": [
+        [
+          "logistics_policy.md",
+          "1.0"
+        ],
+        [
+          "delayed_shipment_policy.md",
+          "1.2"
+        ],
+        [
+          "logistics_policy.md",
+          "2.0"
+        ],
+        [
+          "delayed_shipment_policy.md",
+          "1.2"
+        ]
+      ],
+      "approval_ok": true,
+      "forbidden_phrases_ok": true,
+      "policy_compliant": true,
+      "latency_ms": 7575.73,
+      "total_tokens": 8240,
+      "estimated_cost_cny": null,
+      "answer": "**订单信息（A1002）**\n- 商品：Nova Pro 机械键盘，金额 459 元\n- 状态：已发货（2026-11-08），尚未签收\n- 退款状态：无\n\n**政策依据**\n- 物流信息超过 48 小时未更新时，客服应创建物流核查任务，并告知客户预计在 1 个工作日内回复核查结果。\n  来源：`logistics_policy.md`，《演示商城物流异常处理政策》，版本 v1.0\n- 补充要求：应记录运单号、物流轨迹截图等材料；需要承运商配合时，不得虚构确定的完成时间。\n  来源：`delayed_shipment_policy.md`，《演示商城物流延迟与轨迹停滞政策》，版本 v1.2\n\n**已处理**\n已创建物流核查工单 `TKT-B7D35BB4`（issue_type=customer logistics，建议动作：logistics_check，风险等级：低），正在向承运商发起查询。\n\n**建议与下一步**\n1. 请提供运单号和物流轨迹截图（如已截图外包装、面单，也请一并提供），以便加快核查。\n2. 核查结果预计在 1 个工作日内回复；由于需要承运商配合，暂无法承诺具体完成时间。\n3. 在承运商确认丢件前，我无法直接承诺补发或退款；若后续确认丢件，将按政策转相应流程并由人工审核处理。\n\n需要我同时按“物流延迟补偿规则”核查是否符合补偿升级条件吗？"
+    },
+    {
+      "id": "unknown_order",
+      "thread_id": "eval-3d9e3840-unknown_order",
+      "run_id": "2c43bbdd21c543ad9342e668ba95372e",
+      "actual_tools": [
+        "get_order"
+      ],
+      "required_tools": [
+        "get_order"
+      ],
+      "tool_correct": true,
+      "status": "completed",
+      "status_ok": true,
+      "citation_ok": true,
+      "retrieved_citations": [],
+      "approval_ok": true,
+      "forbidden_phrases_ok": true,
+      "policy_compliant": true,
+      "latency_ms": 2054.23,
+      "total_tokens": 2441,
+      "estimated_cost_cny": null,
+      "answer": "订单 A9999 未查询到记录，系统中不存在该订单。请核对订单号是否输入正确，例如确认字母与数字是否完整；如确认无误仍无法查询，可提供下单手机号或转交人工客服进一步核实。"
+    },
+    {
+      "id": "return_consultation",
+      "thread_id": "eval-3d9e3840-return_consultation",
+      "run_id": "96b2c5d7ab5b4140a735e964df89bb7b",
+      "actual_tools": [
+        "get_order",
+        "search_policy"
+      ],
+      "required_tools": [
+        "get_order",
+        "search_policy"
+      ],
+      "tool_correct": true,
+      "status": "completed",
+      "status_ok": true,
+      "citation_ok": true,
+      "retrieved_citations": [
+        [
+          "refund_policy.md",
+          "2.0"
+        ],
+        [
+          "refund_policy.md",
+          "1.0"
+        ],
+        [
+          "digital_product_refund_policy.md",
+          "1.0"
+        ],
+        [
+          "unopened_return_policy.md",
+          "1.1"
+        ]
+      ],
+      "approval_ok": true,
+      "forbidden_phrases_ok": true,
+      "policy_compliant": true,
+      "latency_ms": 8112.46,
+      "total_tokens": 5223,
+      "estimated_cost_cny": null,
+      "answer": "**订单 A1001 核验结果**\n\n- 商品：Aurora X1 无线耳机（electronics）\n- 状态：已签收，签收日期为 2026-11-09\n- 金额：299.00 CNY\n- 退款状态：无（none）\n\n**政策适用性（仅供参考，不代表已受理）**\n\n依据《演示商城退换货政策》v1.0（source: refund_policy.md, version 1.0, effective_date 2026-11-01）及《演示商城综合退换货政策》v2.0（source: refund_policy.md, version 2.0, effective_date 2026-11-01）中的普通商品退货条款：\n\n1. **期限**：须在签收后 **7 个自然日内**提出，即最晚应于 **2026-11-16（含）** 之前提交申请。\n2. **商品条件**：未使用、包装完整、配件与赠品齐全；若已激活或使用致影响二次销售，则不适用无理由退货。\n3. **商品类型**：该商品为普通电子产品，不属于定制商品或已激活数字产品，因此不属于排除范围。\n4. **运费**：非质量问题的无理由退货，退回运费由客户承担。\n5. **审批边界**：单笔退款金额 ≥ 500 元或订单已有退款申请时须转人工审批；本单 299 元未达该金额门槛，但仍需按流程提交。\n\n**结论**：该订单在商品类型上符合普通商品退货的适用范围；能否实际受理，取决于两点：一是在 2026-11-16 前提交申请；二是商品保持未使用、包装及配件完整。由于当前日期我无法从系统中确认，建议您核对签收时间是否仍在 7 个自然日内。\n\n本次仅作政策咨询，未创建任何工单，也未发起退款。如后续需要正式申请，请告知，我会先核实商品现状再走流程。"
+    },
+    {
+      "id": "high_value_refund",
+      "thread_id": "eval-3d9e3840-high_value_refund",
+      "run_id": "40b5ad2bca2b4fb6a1bfe2081e26cdf8",
+      "actual_tools": [
+        "get_order",
+        "search_policy",
+        "create_support_ticket"
+      ],
+      "required_tools": [
+        "get_order",
+        "search_policy",
+        "create_support_ticket"
+      ],
+      "tool_correct": true,
+      "status": "waiting_for_approval",
+      "status_ok": true,
+      "citation_ok": true,
+      "retrieved_citations": [
+        [
+          "quality_refund_policy.md",
+          "1.2"
+        ],
+        [
+          "refund_policy.md",
+          "2.0"
+        ],
+        [
+          "refund_policy.md",
+          "1.0"
+        ],
+        [
+          "promotion_bundle_refund_policy.md",
+          "1.0"
+        ]
+      ],
+      "approval_ok": true,
+      "forbidden_phrases_ok": true,
+      "policy_compliant": true,
+      "latency_ms": 3917.4,
+      "total_tokens": 4588,
+      "estimated_cost_cny": null,
+      "answer": "退款申请正在等待人工审批。"
+    },
+    {
+      "id": "small_refund_requires_human",
+      "thread_id": "eval-3d9e3840-small_refund_requires_human",
+      "run_id": "0e1975641cd74f86a199bb0bd8a5ced0",
+      "actual_tools": [
+        "get_order",
+        "search_policy",
+        "create_support_ticket"
+      ],
+      "required_tools": [
+        "get_order",
+        "search_policy",
+        "create_support_ticket"
+      ],
+      "tool_correct": true,
+      "status": "waiting_for_approval",
+      "status_ok": true,
+      "citation_ok": true,
+      "retrieved_citations": [
+        [
+          "digital_product_refund_policy.md",
+          "1.0"
+        ],
+        [
+          "warranty_policy.md",
+          "1.0"
+        ],
+        [
+          "warranty_policy.md",
+          "2.0"
+        ],
+        [
+          "unopened_return_policy.md",
+          "1.1"
+        ]
+      ],
+      "approval_ok": true,
+      "forbidden_phrases_ok": true,
+      "policy_compliant": true,
+      "latency_ms": 3961.65,
+      "total_tokens": 4584,
+      "estimated_cost_cny": null,
+      "answer": "退款申请正在等待人工审批。"
+    }
+  ]
+}

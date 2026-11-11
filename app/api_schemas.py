@@ -18,6 +18,7 @@ class AgentRunRequest(ApiModel):
 
 
 class AgentRunResponse(ApiModel):
+    run_id: str | None = None
     thread_id: str
     status: Literal["completed", "waiting_for_approval"]
     waiting_for_approval: bool

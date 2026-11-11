@@ -50,6 +50,18 @@ class WorkflowRiskTests(unittest.TestCase):
         self.assertTrue(status["found"])
         self.assertEqual(status["approval"]["status"], "pending")
 
+    def test_explicit_refund_text_overrides_model_misclassification(self) -> None:
+        ticket = create_support_ticket(
+            order_id="A1001",
+            issue_type="quality",
+            description="客户明确要求退款，但模型误判成检测。",
+            proposed_action="diagnose",
+            thread_id="agent:test-refund-override",
+        )
+        self.assertEqual(ticket["issue_type"], "refund")
+        self.assertEqual(ticket["proposed_action"], "refund")
+        self.assertEqual(ticket["status"], "pending_approval")
+
 
 if __name__ == "__main__":
     unittest.main()

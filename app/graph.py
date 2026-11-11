@@ -25,6 +25,7 @@ SYSTEM_PROMPT = """
 未满足政策条件或需要审批时，不得直接承诺退款。
 当用户诉求需要实际跟进时，先查询订单和政策，再调用 create_support_ticket 创建工单。
 创建退款工单时必须将 proposed_action 设为 refund；系统会自动创建人工审批并暂停对话。
+只要用户明确表达“申请退款、要退款、提交退款”，就必须创建 issue_type=refund、proposed_action=refund 的工单；不得擅自改成 diagnose 或 human_handoff。材料或政策条件不足应由人工审批拒绝或要求补充，不得跳过审批。
 对已有退款工单，可以调用 request_refund_approval 发起审批。
 用户询问审批进度时，必须调用 get_approval_status 查询，不得猜测。
 退款审批只表示等待人工决定，绝不能声称退款已经执行。
