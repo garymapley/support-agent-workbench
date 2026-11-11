@@ -61,6 +61,10 @@ class RefundApprovalRequest(ApiModel):
     )
 
 
+class HandoffRequest(ApiModel):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class ApprovalDecisionRequest(ApiModel):
     decision: Literal["approve", "reject"]
     reviewer: str = Field(min_length=1, max_length=100)

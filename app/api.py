@@ -5,6 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
 
@@ -12,10 +13,12 @@ from app.api_schemas import (
     AgentRunRequest,
     AgentRunResponse,
     ApprovalDecisionRequest,
+    HandoffRequest,
     RefundApprovalRequest,
     TicketCreateRequest,
 )
 from app.checkpointing import close_checkpointer
+from app.config import get_settings
 from app.execution_guard import ThreadBusyError, guard_thread
 from app.graph import graph
 from app.order_repository import find_order_by_id, list_orders
@@ -27,9 +30,11 @@ from app.workflow_repository import (
     create_support_ticket,
     create_refund_approval,
     get_approval,
+    get_latest_approval_for_ticket,
     get_ticket,
     list_approvals,
     list_tickets,
+    escalate_ticket,
 )
 
 
@@ -44,9 +49,17 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="企业售后工单 Agent API",
-    version="0.8.0",
+    version="0.9.0",
     description="订单查询、售后 Agent、工单与人工退款审批接口。",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-Request-ID"],
 )
 
 
@@ -334,6 +347,27 @@ def get_ticket_by_id(ticket_id: str) -> dict[str, Any]:
     if ticket is None:
         raise HTTPException(status_code=404, detail="工单不存在")
     return ticket
+
+
+@app.post("/tickets/{ticket_id}/handoff", tags=["tickets"])
+def handoff_ticket(
+    ticket_id: str,
+    payload: HandoffRequest,
+) -> dict[str, Any]:
+    try:
+        pending = get_latest_approval_for_ticket(ticket_id)
+        if pending and pending["status"] == "pending":
+            raise HTTPException(
+                status_code=409,
+                detail="工单正在等待审批，请先完成或驳回审批。",
+            )
+        return escalate_ticket(ticket_id, payload.reason)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        detail = str(exc)
+        code = 404 if "不存在" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from exc
 
 
 @app.post(

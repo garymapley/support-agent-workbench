@@ -12,12 +12,14 @@ from app.api import (
     get_order,
     get_run_records,
     get_run_summary,
+    handoff_ticket,
     health,
     run_agent,
 )
 from app.api_schemas import (
     AgentRunRequest,
     ApprovalDecisionRequest,
+    HandoffRequest,
     TicketCreateRequest,
 )
 from app.seed import prepare_database
@@ -33,6 +35,7 @@ class ApiTests(unittest.TestCase):
         openapi = app.openapi()
         self.assertIn("/agent/runs", openapi["paths"])
         self.assertIn("/tickets/{ticket_id}/refund-approval", openapi["paths"])
+        self.assertIn("/tickets/{ticket_id}/handoff", openapi["paths"])
 
     def test_order_lookup(self) -> None:
         self.assertEqual(get_order("A1001")["order_id"], "A1001")
@@ -70,6 +73,13 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(waiting_run.status, "waiting_for_approval")
         approval_id = approval_result["approval"]["approval_id"]
+
+        with self.assertRaises(HTTPException) as handoff_context:
+            handoff_ticket(
+                ticket["ticket_id"],
+                HandoffRequest(reason="审批期间不应直接转人工"),
+            )
+        self.assertEqual(handoff_context.exception.status_code, 409)
 
         decision = decide_approval(
             approval_id,
@@ -119,6 +129,22 @@ class ApiTests(unittest.TestCase):
     def test_empty_thread_history(self) -> None:
         result = get_agent_history("not-started-thread")
         self.assertEqual(result["messages"], [])
+
+    def test_ticket_can_be_handed_to_a_person(self) -> None:
+        ticket = create_ticket(
+            TicketCreateRequest(
+                order_id="A1001",
+                issue_type="other",
+                description="需要人工复核的演示工单",
+                proposed_action="human_handoff",
+            )
+        )
+        result = handoff_ticket(
+            ticket["ticket_id"],
+            HandoffRequest(reason="客户要求人工专员回电"),
+        )
+        self.assertEqual(result["status"], "human_handoff")
+        self.assertEqual(result["handoff_reason"], "客户要求人工专员回电")
 
     def test_observability_endpoints(self) -> None:
         summary = get_run_summary(scope="runtime")

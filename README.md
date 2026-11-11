@@ -1,6 +1,6 @@
 # 企业售后工单 Agent
 
-当前里程碑：Agent 已具备订单查询、政策 RAG、人工审批闭环、FastAPI、固定评测集、结构化日志和运行指标统计。
+当前里程碑：Agent 已具备订单查询、政策 RAG、人工审批闭环、FastAPI、固定评测集、结构化日志和 Next.js 工单工作台。
 
 退款审批已经接入主 Agent 图：退款工单会由代码规则自动创建审批，原对话通过 `interrupt()` 暂停，人工决定后使用同一个 `thread_id` 恢复。模型、Embedding 和远程 Qdrant 查询均配置了超时与有限重试；创建工单、创建审批等写操作不会自动重试。
 
@@ -63,6 +63,7 @@ DASHSCOPE_API_KEY=sk-your-key-here
 - Agent 对话：`POST /agent/runs`
 - 会话历史：`GET /agent/threads/{thread_id}/history`
 - 工单：`GET/POST /tickets`
+- 转人工：`POST /tickets/{ticket_id}/handoff`
 - 发起退款审批：`POST /tickets/{ticket_id}/refund-approval`
 - 人工审批：`POST /approvals/{approval_id}/decision`
 - 最近运行记录：`GET /observability/runs`
@@ -73,6 +74,26 @@ DASHSCOPE_API_KEY=sk-your-key-here
 ```text
 订单 A1001 的耳机到货后无法开机，应该怎么处理？
 ```
+
+### 启动 Next.js 工单工作台
+
+保持 FastAPI 在 `8000` 端口运行，再打开第二个 PowerShell：
+
+```powershell
+cd web
+Copy-Item .env.local.example .env.local
+npm install
+npm run dev
+```
+
+访问 `http://127.0.0.1:3000`。工作台包含：
+
+- 工单队列、搜索、状态筛选与订单摘要
+- Agent 多轮对话、工具调用和工具结果轨迹
+- 退款人工审批，审批后恢复同一条 LangGraph 对话
+- 人工接管、运行次数、成功率、延迟与待审批数
+
+`NEXT_PUBLIC_API_BASE_URL` 可在 `web/.env.local` 中指向其他 FastAPI 地址。后端的 `CORS_ORIGINS` 用于限制可访问来源。
 
 ## 当前数据流
 
@@ -117,7 +138,7 @@ DASHSCOPE_API_KEY=sk-your-key-here
 .\.venv\Scripts\python.exe -m scripts.smoke_test_main_graph_approval
 ```
 
-运行 8 条固定真实评测用例：
+运行固定评测集：
 
 ```powershell
 .\.venv\Scripts\python.exe -m scripts.run_evaluation
