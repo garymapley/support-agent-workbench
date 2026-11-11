@@ -142,6 +142,17 @@ class ApiTests(unittest.TestCase):
             "agent:api-test-thread",
         )
 
+    def test_cli_thread_prefix_survives_roundtrip(self) -> None:
+        # 工作台剥掉前缀再回传，必须还原成同一个存储 thread。
+        from app.api import _agent_config, _public_thread_id
+
+        stored = "agent:cli:abc123"
+        self.assertEqual(_public_thread_id(stored), "cli:abc123")
+        self.assertEqual(
+            _agent_config("cli:abc123")["configurable"]["thread_id"],
+            stored,
+        )
+
     def test_empty_thread_history(self) -> None:
         result = get_agent_history("not-started-thread")
         self.assertEqual(result["messages"], [])

@@ -15,7 +15,7 @@ def main() -> None:
     if inserted_orders:
         print(f"已初始化 {inserted_orders} 条演示订单。")
     print("售后工单 Agent 已启动。输入 exit 退出。")
-    thread_id = f"cli:{uuid4().hex}"
+    thread_id = f"agent:cli:{uuid4().hex}"
     config = {
         "recursion_limit": 12,
         "configurable": {"thread_id": thread_id},

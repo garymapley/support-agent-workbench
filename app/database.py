@@ -70,34 +70,34 @@ def _migrate_existing_sqlite_schema() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
 
-    inspector = inspect(engine)
-    if "approval_requests" not in inspector.get_table_names():
-        return
-    column_names = {
-        column["name"]
-        for column in inspector.get_columns("approval_requests")
-    }
-    if "thread_id" not in column_names:
+    table_names = set(inspect(engine).get_table_names())
+
+    if "approval_requests" in table_names:
+        column_names = {
+            column["name"]
+            for column in inspect(engine).get_columns("approval_requests")
+        }
+        if "thread_id" not in column_names:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE approval_requests "
+                        "ADD COLUMN thread_id VARCHAR(160)"
+                    )
+                )
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "ALTER TABLE approval_requests "
-                    "ADD COLUMN thread_id VARCHAR(160)"
+                    "CREATE INDEX IF NOT EXISTS "
+                    "ix_approval_requests_thread_id "
+                    "ON approval_requests (thread_id)"
                 )
             )
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS "
-                "ix_approval_requests_thread_id "
-                "ON approval_requests (thread_id)"
-            )
-        )
-    inspector = inspect(engine)
-    if "agent_runs" in inspector.get_table_names():
+
+    if "agent_runs" in table_names:
         run_columns = {
             column["name"]
-            for column in inspector.get_columns("agent_runs")
+            for column in inspect(engine).get_columns("agent_runs")
         }
         if "run_scope" not in run_columns:
             with engine.begin() as connection:
@@ -119,4 +119,26 @@ def _migrate_existing_sqlite_schema() -> None:
                         "ON agent_runs (run_scope)"
                     )
                 )
+
+    if "support_tickets" in table_names:
+        ticket_columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("support_tickets")
+        }
+        if "thread_id" not in ticket_columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "ALTER TABLE support_tickets "
+                        "ADD COLUMN thread_id VARCHAR(160)"
+                    )
+                )
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS "
+                    "ix_support_tickets_thread_id "
+                    "ON support_tickets (thread_id)"
+                )
+            )
 
