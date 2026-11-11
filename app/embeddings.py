@@ -17,6 +17,8 @@ def get_embedding_client() -> OpenAI:
     return OpenAI(
         api_key=settings.dashscope_api_key,
         base_url=settings.dashscope_base_url,
+        timeout=settings.embedding_timeout_seconds,
+        max_retries=max(0, settings.external_read_attempts - 1),
     )
 
 

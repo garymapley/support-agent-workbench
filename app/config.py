@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     qdrant_url: str = ""
     qdrant_api_key: str = ""
     qdrant_collection: str = "support_policies"
+    checkpoint_database_path: str = "./data/checkpoints.db"
+    model_timeout_seconds: float = 30.0
+    embedding_timeout_seconds: float = 20.0
+    qdrant_timeout_seconds: float = 10.0
+    external_read_attempts: int = 3
 
     model_config = SettingsConfigDict(
         env_file=".env",

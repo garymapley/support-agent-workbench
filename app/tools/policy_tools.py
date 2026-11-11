@@ -6,6 +6,23 @@ from qdrant_client import models
 from app.config import get_settings
 from app.embeddings import embed_query
 from app.qdrant_store import get_qdrant_client
+from app.reliability import retry_transient_read
+
+
+def _query_policy_points(client, settings, vector, query_filter):
+    @retry_transient_read(settings.external_read_attempts)
+    def query():
+        return client.query_points(
+            collection_name=settings.qdrant_collection,
+            query=vector,
+            query_filter=query_filter,
+            limit=4,
+            with_payload=True,
+            score_threshold=0.25,
+            timeout=settings.qdrant_timeout_seconds,
+        )
+
+    return query()
 
 
 @tool
@@ -43,13 +60,11 @@ def search_policy(query: str, policy_type: str = "all") -> str:
             )
         )
 
-    response = client.query_points(
-        collection_name=settings.qdrant_collection,
-        query=embed_query(query),
-        query_filter=models.Filter(must=must_conditions),
-        limit=4,
-        with_payload=True,
-        score_threshold=0.25,
+    response = _query_policy_points(
+        client,
+        settings,
+        embed_query(query),
+        models.Filter(must=must_conditions),
     )
 
     results = []

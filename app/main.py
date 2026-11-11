@@ -1,7 +1,9 @@
 import json
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage
 
+from app.checkpointing import close_checkpointer
 from app.graph import graph
 from app.qdrant_store import close_qdrant_client
 from app.seed import prepare_database
@@ -12,6 +14,7 @@ def main() -> None:
     if inserted_orders:
         print(f"已初始化 {inserted_orders} 条演示订单。")
     print("售后工单 Agent 已启动。输入 exit 退出。")
+    thread_id = f"cli:{uuid4().hex}"
 
     while True:
         user_input = input("\n你：").strip()
@@ -25,7 +28,10 @@ def main() -> None:
         try:
             result = graph.invoke(
                 {"messages": [HumanMessage(content=user_input)]},
-                config={"recursion_limit": 8},
+                config={
+                    "recursion_limit": 8,
+                    "configurable": {"thread_id": thread_id},
+                },
             )
         except Exception as exc:
             print(f"\n调用失败：{exc}")
@@ -51,4 +57,5 @@ if __name__ == "__main__":
         main()
     finally:
         close_qdrant_client()
+        close_checkpointer()
 

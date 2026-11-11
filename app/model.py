@@ -21,5 +21,7 @@ def get_chat_model() -> ChatOpenAI:
         api_key=settings.dashscope_api_key,
         base_url=settings.dashscope_base_url,
         temperature=0,
+        timeout=settings.model_timeout_seconds,
+        max_retries=max(0, settings.external_read_attempts - 1),
     )
 

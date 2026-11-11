@@ -13,6 +13,7 @@ def get_qdrant_client() -> QdrantClient:
         return QdrantClient(
             url=settings.qdrant_url,
             api_key=settings.qdrant_api_key or None,
+            timeout=settings.qdrant_timeout_seconds,
         )
 
     Path(settings.qdrant_path).parent.mkdir(parents=True, exist_ok=True)

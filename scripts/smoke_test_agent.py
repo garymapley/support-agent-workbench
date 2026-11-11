@@ -1,13 +1,19 @@
 """对 Agent -> Tool -> Agent 链路进行一次真实冒烟测试。"""
 
+import sys
+from uuid import uuid4
+
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+from app.checkpointing import close_checkpointer
 from app.graph import graph
 from app.qdrant_store import close_qdrant_client
 from app.seed import prepare_database
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     prepare_database()
     result = graph.invoke(
         {
@@ -17,7 +23,10 @@ def main() -> None:
                 )
             ]
         },
-        config={"recursion_limit": 8},
+        config={
+            "recursion_limit": 8,
+            "configurable": {"thread_id": f"smoke:agent:{uuid4().hex}"},
+        },
     )
 
     called_tools: list[str] = []
@@ -42,3 +51,4 @@ if __name__ == "__main__":
         main()
     finally:
         close_qdrant_client()
+        close_checkpointer()

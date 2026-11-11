@@ -1,0 +1,201 @@
+from datetime import datetime
+from typing import Any
+from uuid import uuid4
+
+from sqlalchemy import select
+
+from app.database import session_scope
+from app.db_models import ApprovalRequest, SupportTicket
+from app.order_repository import find_order_by_id
+
+
+def assess_risk(order: dict[str, Any], proposed_action: str) -> str:
+    """根据订单与建议动作给出可解释的基础风险等级。"""
+
+    action = proposed_action.strip().lower()
+    if action == "refund":
+        amount = float(order.get("amount", 0))
+        refund_status = str(order.get("refund_status", "none"))
+        if amount >= 500 or refund_status != "none":
+            return "high"
+        return "medium"
+    if action in {"replace", "repair"}:
+        return "medium"
+    return "low"
+
+
+def _ticket_to_dict(ticket: SupportTicket) -> dict[str, Any]:
+    return {
+        "ticket_id": ticket.ticket_id,
+        "order_id": ticket.order_id,
+        "issue_type": ticket.issue_type,
+        "description": ticket.description,
+        "proposed_action": ticket.proposed_action,
+        "risk_level": ticket.risk_level,
+        "status": ticket.status,
+        "handoff_reason": ticket.handoff_reason,
+    }
+
+
+def _approval_to_dict(approval: ApprovalRequest) -> dict[str, Any]:
+    return {
+        "approval_id": approval.approval_id,
+        "ticket_id": approval.ticket_id,
+        "order_id": approval.order_id,
+        "action_type": approval.action_type,
+        "amount": float(approval.amount),
+        "reason": approval.reason,
+        "status": approval.status,
+        "reviewer": approval.reviewer,
+        "review_comment": approval.review_comment,
+        "reviewed_at": (
+            approval.reviewed_at.isoformat() if approval.reviewed_at else None
+        ),
+    }
+
+
+def create_support_ticket(
+    order_id: str,
+    issue_type: str,
+    description: str,
+    proposed_action: str,
+) -> dict[str, Any]:
+    order = find_order_by_id(order_id)
+    if order is None:
+        raise ValueError(f"订单 {order_id.strip().upper()} 不存在")
+
+    ticket = SupportTicket(
+        ticket_id=f"TKT-{uuid4().hex[:8].upper()}",
+        order_id=order["order_id"],
+        issue_type=issue_type.strip().lower(),
+        description=description.strip(),
+        proposed_action=proposed_action.strip().lower(),
+        risk_level=assess_risk(order, proposed_action),
+        status="open",
+    )
+    with session_scope() as session:
+        session.add(ticket)
+        session.flush()
+        return _ticket_to_dict(ticket)
+
+
+def get_ticket(ticket_id: str) -> dict[str, Any] | None:
+    with session_scope() as session:
+        ticket = session.scalar(
+            select(SupportTicket).where(
+                SupportTicket.ticket_id == ticket_id.strip().upper()
+            )
+        )
+        return _ticket_to_dict(ticket) if ticket else None
+
+
+def create_refund_approval(
+    ticket_id: str,
+    reason: str,
+) -> dict[str, Any]:
+    normalized_id = ticket_id.strip().upper()
+    with session_scope() as session:
+        ticket = session.scalar(
+            select(SupportTicket).where(
+                SupportTicket.ticket_id == normalized_id
+            )
+        )
+        if ticket is None:
+            raise ValueError(f"工单 {normalized_id} 不存在")
+        if ticket.proposed_action != "refund":
+            raise ValueError("只有建议动作为 refund 的工单可以申请退款审批")
+
+        existing = session.scalar(
+            select(ApprovalRequest).where(
+                ApprovalRequest.ticket_id == normalized_id,
+                ApprovalRequest.status == "pending",
+            )
+        )
+        if existing:
+            return _approval_to_dict(existing)
+
+        order = find_order_by_id(ticket.order_id)
+        if order is None:
+            raise ValueError(f"订单 {ticket.order_id} 不存在")
+
+        approval = ApprovalRequest(
+            approval_id=f"APR-{uuid4().hex[:8].upper()}",
+            ticket_id=ticket.ticket_id,
+            order_id=ticket.order_id,
+            action_type="refund",
+            amount=order["amount"],
+            reason=reason.strip(),
+            status="pending",
+        )
+        ticket.status = "pending_approval"
+        session.add(approval)
+        session.flush()
+        return _approval_to_dict(approval)
+
+
+def get_approval(approval_id: str) -> dict[str, Any] | None:
+    with session_scope() as session:
+        approval = session.scalar(
+            select(ApprovalRequest).where(
+                ApprovalRequest.approval_id == approval_id.strip().upper()
+            )
+        )
+        return _approval_to_dict(approval) if approval else None
+
+
+def apply_approval_decision(
+    approval_id: str,
+    decision: str,
+    reviewer: str,
+    comment: str = "",
+) -> dict[str, Any]:
+    normalized_decision = decision.strip().lower()
+    if normalized_decision not in {"approve", "reject"}:
+        raise ValueError("decision 只能是 approve 或 reject")
+
+    with session_scope() as session:
+        approval = session.scalar(
+            select(ApprovalRequest).where(
+                ApprovalRequest.approval_id == approval_id.strip().upper()
+            )
+        )
+        if approval is None:
+            raise ValueError(f"审批 {approval_id} 不存在")
+        if approval.status != "pending":
+            return _approval_to_dict(approval)
+
+        ticket = session.scalar(
+            select(SupportTicket).where(
+                SupportTicket.ticket_id == approval.ticket_id
+            )
+        )
+        if ticket is None:
+            raise ValueError(f"关联工单 {approval.ticket_id} 不存在")
+
+        approval.status = "approved" if normalized_decision == "approve" else "rejected"
+        approval.reviewer = reviewer.strip()
+        approval.review_comment = comment.strip() or None
+        approval.reviewed_at = datetime.now()
+        ticket.status = (
+            "approved_pending_execution"
+            if normalized_decision == "approve"
+            else "approval_rejected"
+        )
+        session.flush()
+        return _approval_to_dict(approval)
+
+
+def escalate_ticket(ticket_id: str, reason: str) -> dict[str, Any]:
+    normalized_id = ticket_id.strip().upper()
+    with session_scope() as session:
+        ticket = session.scalar(
+            select(SupportTicket).where(
+                SupportTicket.ticket_id == normalized_id
+            )
+        )
+        if ticket is None:
+            raise ValueError(f"工单 {normalized_id} 不存在")
+        ticket.status = "human_handoff"
+        ticket.handoff_reason = reason.strip()
+        session.flush()
+        return _ticket_to_dict(ticket)

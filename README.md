@@ -1,6 +1,8 @@
 # 企业售后工单 Agent
 
-当前里程碑：使用 LangGraph 调用百炼聊天模型，通过 SQLAlchemy 查询 SQLite 订单，并使用 Qdrant + Embedding 检索企业售后政策。
+当前里程碑：Agent 已具备订单查询、政策 RAG、工单创建、风险判断和可暂停/恢复的人工退款审批。
+
+主 Agent 对话和退款审批共用 SQLite checkpointer，并通过不同 `thread_id` 隔离。创建退款审批时会立即启动审批线程并暂停等待人工处理。模型、Embedding 和远程 Qdrant 查询均配置了超时与有限重试；创建工单、创建审批等写操作不会自动重试。
 
 默认模型：
 
@@ -58,6 +60,8 @@ python -m app.main
 命令行输入 -> LangGraph -> 聊天模型
                                |-> get_order -> SQLAlchemy -> SQLite
                                |-> search_policy -> Embedding -> Qdrant
+                               |-> create_support_ticket -> SQLite
+                               |-> request_refund_approval -> 人工暂停/恢复
                                -> 聊天模型 -> 带政策来源的回答
 ```
 
@@ -80,5 +84,13 @@ python -m scripts.smoke_test_agent
 ```powershell
 python -m scripts.smoke_test_rag
 ```
+
+运行不调用模型的人工审批冒烟测试：
+
+```powershell
+python -m scripts.smoke_test_approval
+```
+
+审批演示会创建高风险退款工单，在 LangGraph 的人工节点暂停，再模拟主管审批并从 SQLite 检查点恢复。审批通过后的状态是 `approved_pending_execution`，项目不会执行真实退款。
 
 `knowledge/` 中的政策全部是演示数据，不代表真实企业承诺。后续计划见 [ROADMAP.md](ROADMAP.md)。

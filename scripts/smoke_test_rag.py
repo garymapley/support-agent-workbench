@@ -1,7 +1,9 @@
 import sys
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+from app.checkpointing import close_checkpointer
 from app.graph import graph
 from app.qdrant_store import close_qdrant_client
 from app.seed import prepare_database
@@ -23,10 +25,14 @@ def main() -> None:
                     )
                 ]
             },
-            config={"recursion_limit": 10},
+            config={
+                "recursion_limit": 10,
+                "configurable": {"thread_id": f"smoke:rag:{uuid4().hex}"},
+            },
         )
     finally:
         close_qdrant_client()
+        close_checkpointer()
 
     called_tools: list[str] = []
     tool_results = 0
