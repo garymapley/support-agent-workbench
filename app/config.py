@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     chat_output_cost_per_million_cny: float = 0.0
     log_path: str = "./logs/agent.jsonl"
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    admin_token: str = ""
+    admin_reviewer: str = "售后值班主管"
 
     @property
     def cors_origin_list(self) -> list[str]:

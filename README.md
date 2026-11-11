@@ -69,6 +69,18 @@ DASHSCOPE_API_KEY=sk-your-key-here
 - 最近运行记录：`GET /observability/runs`
 - 指标汇总：`GET /observability/summary`
 
+### 管理接口鉴权
+
+除 `GET /health` 外，所有接口都要求请求头带 `X-Admin-Token`，值需与 `.env` 中的 `ADMIN_TOKEN` 一致。`ADMIN_TOKEN` 留空时管理接口一律返回 `503`，避免忘记配置就裸奔。
+
+在 Swagger 页面测试时，先点右上角 `Authorize`，填入 `ADMIN_TOKEN` 的值，再执行接口；直接用 `curl` 或 PowerShell 调用时必须手动加上该请求头：
+
+```powershell
+Invoke-RestMethod "http://127.0.0.1:8000/tickets?limit=5" -Headers @{ "X-Admin-Token" = "demo-admin-token-2026" }
+```
+
+审批人身份由服务端从 `ADMIN_REVIEWER` 注入，请求体里自报的 `reviewer` 会被覆盖，因此无法伪造审批记录。
+
 可以使用模拟订单 `A1001`、`A1002` 或 `A1003` 测试：
 
 ```text
@@ -86,7 +98,7 @@ npm install
 npm run dev
 ```
 
-访问 `http://127.0.0.1:3000`。工作台包含：
+访问 `http://localhost:3000`。`http://127.0.0.1:3000` 同样可用——`web/next.config.ts` 已通过 `allowedDevOrigins` 把该来源加入白名单，否则 Next.js 16 会把 dev 资源请求判为跨源而返回 403，页面会停在骨架屏。工作台包含：
 
 - 工单队列、搜索、状态筛选与订单摘要
 - Agent 多轮对话、工具调用和工具结果轨迹
@@ -154,3 +166,11 @@ npm run dev
 审批演示会创建高风险退款工单，在主 LangGraph 的人工节点暂停，再模拟主管审批并从同一个 SQLite thread 检查点恢复。审批通过后的状态是 `approved_pending_execution`，项目不会执行真实退款。
 
 `knowledge/` 中的政策全部是演示数据，不代表真实企业承诺。后续计划见 [ROADMAP.md](ROADMAP.md)。
+
+## 已知限制
+
+- **鉴权是演示级**：`ADMIN_TOKEN` 通过 `NEXT_PUBLIC_ADMIN_TOKEN` 一并下发到前端，任何打开工作台的人都能在浏览器里读到它。它挡的是"不知情的外部调用"，不是"有心的内部人员"。生产环境应改为登录态或 OIDC，令牌不下发前端。
+- **不执行真实退款**：审批通过后的终态是 `approved_pending_execution`，退款由外部系统执行，项目不承担资金操作。
+- **单实例假设**：业务库和 LangGraph 检查点都用本地 SQLite，加上进程内线程锁，不支持多副本水平扩展。
+- **CLI 与脚本不写运行指标**：`logs/agent.jsonl` 与 `observability` 汇总只覆盖 FastAPI 入口，`app/main.py` 和 `scripts/` 下的冒烟与评测脚本不会产生运行记录。
+- **评测的检索判定偏松**：`scripts/run_evaluation.py` 只检查来源文件名是否出现在回答中，不做 top-1 命中校验，因此策略合规率 100% 的可信度需结合手工检索实测一起看。

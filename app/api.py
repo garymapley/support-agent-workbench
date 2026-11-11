@@ -4,7 +4,7 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
@@ -24,6 +24,7 @@ from app.graph import graph
 from app.order_repository import find_order_by_id, list_orders
 from app.qdrant_store import close_qdrant_client
 from app.run_repository import list_runs, summarize_runs
+from app.security import require_admin
 from app.seed import prepare_database
 from app.telemetry import configure_logging, logger, record_run
 from app.workflow_repository import (
@@ -57,9 +58,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origin_list,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-Request-ID"],
+    allow_headers=["Content-Type", "X-Request-ID", "X-Admin-Token"],
+    expose_headers=["X-Request-ID"],
 )
 
 
@@ -202,6 +204,7 @@ def health() -> dict[str, str]:
     "/agent/runs",
     response_model=AgentRunResponse,
     tags=["agent"],
+    dependencies=[Depends(require_admin)],
 )
 def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
     from langchain_core.messages import HumanMessage
@@ -274,7 +277,11 @@ def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
     return response
 
 
-@app.get("/agent/threads/{thread_id}/history", tags=["agent"])
+@app.get(
+    "/agent/threads/{thread_id}/history",
+    tags=["agent"],
+    dependencies=[Depends(require_admin)],
+)
 def get_agent_history(thread_id: str) -> dict[str, Any]:
     snapshot = graph.get_state(_agent_config(thread_id))
     history = []
@@ -293,12 +300,12 @@ def get_agent_history(thread_id: str) -> dict[str, Any]:
     return {"thread_id": thread_id, "messages": history}
 
 
-@app.get("/orders", tags=["orders"])
+@app.get("/orders", tags=["orders"], dependencies=[Depends(require_admin)])
 def get_orders(limit: int = Query(50, ge=1, le=200)) -> list[dict[str, Any]]:
     return list_orders(limit)
 
 
-@app.get("/orders/{order_id}", tags=["orders"])
+@app.get("/orders/{order_id}", tags=["orders"], dependencies=[Depends(require_admin)])
 def get_order(order_id: str) -> dict[str, Any]:
     order = find_order_by_id(order_id)
     if order is None:
@@ -306,7 +313,12 @@ def get_order(order_id: str) -> dict[str, Any]:
     return order
 
 
-@app.post("/tickets", status_code=201, tags=["tickets"])
+@app.post(
+    "/tickets",
+    status_code=201,
+    tags=["tickets"],
+    dependencies=[Depends(require_admin)],
+)
 def create_ticket(payload: TicketCreateRequest) -> dict[str, Any]:
     try:
         data = payload.model_dump()
@@ -333,7 +345,7 @@ def create_ticket(payload: TicketCreateRequest) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@app.get("/tickets", tags=["tickets"])
+@app.get("/tickets", tags=["tickets"], dependencies=[Depends(require_admin)])
 def get_tickets(
     limit: int = Query(50, ge=1, le=200),
     ticket_status: str | None = Query(default=None, alias="status"),
@@ -341,7 +353,7 @@ def get_tickets(
     return list_tickets(limit, ticket_status)
 
 
-@app.get("/tickets/{ticket_id}", tags=["tickets"])
+@app.get("/tickets/{ticket_id}", tags=["tickets"], dependencies=[Depends(require_admin)])
 def get_ticket_by_id(ticket_id: str) -> dict[str, Any]:
     ticket = get_ticket(ticket_id)
     if ticket is None:
@@ -349,7 +361,11 @@ def get_ticket_by_id(ticket_id: str) -> dict[str, Any]:
     return ticket
 
 
-@app.post("/tickets/{ticket_id}/handoff", tags=["tickets"])
+@app.post(
+    "/tickets/{ticket_id}/handoff",
+    tags=["tickets"],
+    dependencies=[Depends(require_admin)],
+)
 def handoff_ticket(
     ticket_id: str,
     payload: HandoffRequest,
@@ -374,6 +390,7 @@ def handoff_ticket(
     "/tickets/{ticket_id}/refund-approval",
     status_code=201,
     tags=["approvals"],
+    dependencies=[Depends(require_admin)],
 )
 def request_refund_approval(
     ticket_id: str,
@@ -399,7 +416,7 @@ def request_refund_approval(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@app.get("/approvals", tags=["approvals"])
+@app.get("/approvals", tags=["approvals"], dependencies=[Depends(require_admin)])
 def get_approvals(
     limit: int = Query(50, ge=1, le=200),
     approval_status: str | None = Query(default=None, alias="status"),
@@ -407,7 +424,7 @@ def get_approvals(
     return list_approvals(limit, approval_status)
 
 
-@app.get("/observability/runs", tags=["observability"])
+@app.get("/observability/runs", tags=["observability"], dependencies=[Depends(require_admin)])
 def get_run_records(
     limit: int = Query(50, ge=1, le=200),
     scope: str = Query("runtime", pattern="^(runtime|evaluation|test)$"),
@@ -415,14 +432,14 @@ def get_run_records(
     return list_runs(limit, scope)
 
 
-@app.get("/observability/summary", tags=["observability"])
+@app.get("/observability/summary", tags=["observability"], dependencies=[Depends(require_admin)])
 def get_run_summary(
     scope: str = Query("runtime", pattern="^(runtime|evaluation|test)$"),
 ) -> dict[str, Any]:
     return summarize_runs(scope)
 
 
-@app.get("/approvals/{approval_id}", tags=["approvals"])
+@app.get("/approvals/{approval_id}", tags=["approvals"], dependencies=[Depends(require_admin)])
 def get_approval_by_id(approval_id: str) -> dict[str, Any]:
     approval = get_approval(approval_id)
     if approval is None:
@@ -430,11 +447,16 @@ def get_approval_by_id(approval_id: str) -> dict[str, Any]:
     return approval
 
 
-@app.post("/approvals/{approval_id}/decision", tags=["approvals"])
+@app.post(
+    "/approvals/{approval_id}/decision",
+    tags=["approvals"],
+    dependencies=[Depends(require_admin)],
+)
 def decide_approval(
     approval_id: str,
     payload: ApprovalDecisionRequest,
 ) -> dict[str, Any]:
+    admin_reviewer = get_settings().admin_reviewer
     approval = get_approval(approval_id)
     if approval is None:
         raise HTTPException(status_code=404, detail="审批不存在")
@@ -464,7 +486,12 @@ def decide_approval(
                     detail="原 Agent 对话当前没有等待中的审批节点。",
                 )
             result = graph.invoke(
-                Command(resume=payload.model_dump()),
+                Command(
+                    resume={
+                        **payload.model_dump(),
+                        "reviewer": admin_reviewer,
+                    }
+                ),
                 config=_stored_thread_config(stored_thread_id),
             )
     except ThreadBusyError as exc:
