@@ -24,7 +24,7 @@ from app.graph import graph
 from app.order_repository import find_order_by_id, list_orders
 from app.qdrant_store import close_qdrant_client
 from app.run_repository import list_runs, summarize_runs
-from app.security import require_admin
+from app.security import require_operator, require_reviewer
 from app.seed import prepare_database
 from app.telemetry import configure_logging, logger, record_run
 from app.workflow_repository import (
@@ -50,7 +50,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="企业售后工单 Agent API",
-    version="0.9.0",
+    version="1.0.0",
     description="订单查询、售后 Agent、工单与人工退款审批接口。",
     lifespan=lifespan,
 )
@@ -204,7 +204,7 @@ def health() -> dict[str, str]:
     "/agent/runs",
     response_model=AgentRunResponse,
     tags=["agent"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_operator)],
 )
 def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
     from langchain_core.messages import HumanMessage
@@ -280,7 +280,7 @@ def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
 @app.get(
     "/agent/threads/{thread_id}/history",
     tags=["agent"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_operator)],
 )
 def get_agent_history(thread_id: str) -> dict[str, Any]:
     snapshot = graph.get_state(_agent_config(thread_id))
@@ -300,12 +300,12 @@ def get_agent_history(thread_id: str) -> dict[str, Any]:
     return {"thread_id": thread_id, "messages": history}
 
 
-@app.get("/orders", tags=["orders"], dependencies=[Depends(require_admin)])
+@app.get("/orders", tags=["orders"], dependencies=[Depends(require_operator)])
 def get_orders(limit: int = Query(50, ge=1, le=200)) -> list[dict[str, Any]]:
     return list_orders(limit)
 
 
-@app.get("/orders/{order_id}", tags=["orders"], dependencies=[Depends(require_admin)])
+@app.get("/orders/{order_id}", tags=["orders"], dependencies=[Depends(require_operator)])
 def get_order(order_id: str) -> dict[str, Any]:
     order = find_order_by_id(order_id)
     if order is None:
@@ -317,7 +317,7 @@ def get_order(order_id: str) -> dict[str, Any]:
     "/tickets",
     status_code=201,
     tags=["tickets"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_operator)],
 )
 def create_ticket(payload: TicketCreateRequest) -> dict[str, Any]:
     try:
@@ -341,7 +341,7 @@ def create_ticket(payload: TicketCreateRequest) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@app.get("/tickets", tags=["tickets"], dependencies=[Depends(require_admin)])
+@app.get("/tickets", tags=["tickets"], dependencies=[Depends(require_operator)])
 def get_tickets(
     limit: int = Query(50, ge=1, le=200),
     ticket_status: str | None = Query(default=None, alias="status"),
@@ -349,7 +349,7 @@ def get_tickets(
     return list_tickets(limit, ticket_status)
 
 
-@app.get("/tickets/{ticket_id}", tags=["tickets"], dependencies=[Depends(require_admin)])
+@app.get("/tickets/{ticket_id}", tags=["tickets"], dependencies=[Depends(require_operator)])
 def get_ticket_by_id(ticket_id: str) -> dict[str, Any]:
     ticket = get_ticket(ticket_id)
     if ticket is None:
@@ -360,7 +360,7 @@ def get_ticket_by_id(ticket_id: str) -> dict[str, Any]:
 @app.post(
     "/tickets/{ticket_id}/handoff",
     tags=["tickets"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_operator)],
 )
 def handoff_ticket(
     ticket_id: str,
@@ -380,7 +380,7 @@ def handoff_ticket(
     "/tickets/{ticket_id}/refund-approval",
     status_code=201,
     tags=["approvals"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_operator)],
 )
 def request_refund_approval(
     ticket_id: str,
@@ -406,7 +406,7 @@ def request_refund_approval(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@app.get("/approvals", tags=["approvals"], dependencies=[Depends(require_admin)])
+@app.get("/approvals", tags=["approvals"], dependencies=[Depends(require_operator)])
 def get_approvals(
     limit: int = Query(50, ge=1, le=200),
     approval_status: str | None = Query(default=None, alias="status"),
@@ -414,7 +414,7 @@ def get_approvals(
     return list_approvals(limit, approval_status)
 
 
-@app.get("/observability/runs", tags=["observability"], dependencies=[Depends(require_admin)])
+@app.get("/observability/runs", tags=["observability"], dependencies=[Depends(require_operator)])
 def get_run_records(
     limit: int = Query(50, ge=1, le=200),
     scope: str = Query("runtime", pattern="^(runtime|evaluation|test)$"),
@@ -422,14 +422,14 @@ def get_run_records(
     return list_runs(limit, scope)
 
 
-@app.get("/observability/summary", tags=["observability"], dependencies=[Depends(require_admin)])
+@app.get("/observability/summary", tags=["observability"], dependencies=[Depends(require_operator)])
 def get_run_summary(
     scope: str = Query("runtime", pattern="^(runtime|evaluation|test)$"),
 ) -> dict[str, Any]:
     return summarize_runs(scope)
 
 
-@app.get("/approvals/{approval_id}", tags=["approvals"], dependencies=[Depends(require_admin)])
+@app.get("/approvals/{approval_id}", tags=["approvals"], dependencies=[Depends(require_operator)])
 def get_approval_by_id(approval_id: str) -> dict[str, Any]:
     approval = get_approval(approval_id)
     if approval is None:
@@ -440,7 +440,7 @@ def get_approval_by_id(approval_id: str) -> dict[str, Any]:
 @app.post(
     "/approvals/{approval_id}/decision",
     tags=["approvals"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_reviewer)],
 )
 def decide_approval(
     approval_id: str,

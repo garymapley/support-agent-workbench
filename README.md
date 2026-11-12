@@ -1,6 +1,6 @@
 # 企业售后工单 Agent
 
-当前里程碑：Agent 已具备订单查询、政策 RAG、人工审批闭环、FastAPI、固定评测集、结构化日志和 Next.js 工单工作台。
+当前里程碑：M10 已完成。Agent 已具备订单查询、政策 RAG、人工审批闭环、FastAPI、固定评测集、结构化日志、Next.js 工单工作台和 Docker Compose 部署。
 
 退款审批已经接入主 Agent 图：退款工单会由代码规则自动创建审批，原对话通过 `interrupt()` 暂停，人工决定后使用同一个 `thread_id` 恢复。模型、Embedding 和远程 Qdrant 查询均配置了超时与有限重试；创建工单、创建审批等写操作不会自动重试。
 
@@ -71,7 +71,7 @@ DASHSCOPE_API_KEY=sk-your-key-here
 
 ### 管理接口鉴权
 
-除 `GET /health` 外，所有接口都要求请求头带 `X-Admin-Token`，值需与 `.env` 中的 `ADMIN_TOKEN` 一致。`ADMIN_TOKEN` 留空时管理接口一律返回 `503`，避免忘记配置就裸奔。
+除 `GET /health` 外，所有接口都要求请求头带 `X-Admin-Token`。`ADMIN_TOKEN` 是审批管理员角色，可访问全部接口；可选的 `OPERATOR_TOKEN` 是操作员角色，可查询、运行 Agent、建工单和转人工，但调用退款审批决定接口会返回 `403`。`ADMIN_TOKEN` 留空时管理接口一律返回 `503`，避免忘记配置就裸奔。
 
 在 Swagger 页面测试时，先点右上角 `Authorize`，填入 `ADMIN_TOKEN` 的值，再执行接口；直接用 `curl` 或 PowerShell 调用时必须手动加上该请求头：
 
@@ -105,7 +105,41 @@ npm run dev
 - 退款人工审批，审批后恢复同一条 LangGraph 对话
 - 人工接管、运行次数、成功率、延迟与待审批数
 
-`NEXT_PUBLIC_API_BASE_URL` 可在 `web/.env.local` 中指向其他 FastAPI 地址。后端的 `CORS_ORIGINS` 用于限制可访问来源。
+`BACKEND_API_URL` 可在 `web/.env.local` 中指向其他 FastAPI 地址。浏览器只访问 Next.js 同源代理，`ADMIN_TOKEN` 仅由服务端读取，不再进入浏览器包。后端的 `CORS_ORIGINS` 用于限制直接访问 FastAPI 的来源。
+
+## Docker Compose 部署
+
+根目录 `.env` 必须配置真实 `DASHSCOPE_API_KEY` 和随机的 `ADMIN_TOKEN`，然后执行：
+
+```powershell
+docker compose build
+docker compose up -d
+docker compose --profile tools run --rm knowledge-init
+docker compose ps
+```
+
+首次部署只运行一次 `knowledge-init`；它会调用 Embedding API 并将政策写入 Qdrant 持久化卷。以后普通启动只需 `docker compose up -d`。访问地址：
+
+- 工作台：`http://localhost:3000`
+- FastAPI 文档（仅宿主机）：`http://127.0.0.1:8000/docs`
+- 健康检查：`http://127.0.0.1:8000/health`
+
+服务说明：
+
+- `web`：Next.js 生产 `standalone` 镜像，非 root 运行，对外开放 `3000`
+- `api`：FastAPI 镜像，非 root 运行，只绑定宿主机回环地址 `127.0.0.1:8000`
+- `qdrant`：只在 Compose 内部网络开放，不暴露宿主机端口
+- `knowledge-init`：显式的一次性知识导入任务，不随普通启动重复执行
+- `api_data`、`api_logs`、`qdrant_data`：持久化业务数据、日志和向量
+
+查看日志和停止服务：
+
+```powershell
+docker compose logs -f api web qdrant
+docker compose down
+```
+
+`docker compose down` 会保留命名卷；只有明确需要清空所有业务和向量数据时才使用 `docker compose down -v`。公网部署与反向代理要求见 [部署说明](docs/DEPLOYMENT.md)。
 
 ## 当前数据流
 
@@ -169,7 +203,7 @@ npm run dev
 
 ## 已知限制
 
-- **鉴权是演示级**：`ADMIN_TOKEN` 通过 `NEXT_PUBLIC_ADMIN_TOKEN` 一并下发到前端，任何打开工作台的人都能在浏览器里读到它。它挡的是"不知情的外部调用"，不是"有心的内部人员"。生产环境应改为登录态或 OIDC，令牌不下发前端。
+- **RBAC 是演示级**：操作员与审批管理员通过两张静态令牌区分，令牌已留在 Next.js 服务端，不进入浏览器包；真正多用户生产环境仍应改为登录态或 OIDC，并记录用户级审计身份。
 - **不执行真实退款**：审批通过后的终态是 `approved_pending_execution`，退款由外部系统执行，项目不承担资金操作。
 - **单实例假设**：业务库和 LangGraph 检查点都用本地 SQLite，加上进程内线程锁，不支持多副本水平扩展。
 - **CLI 与脚本不写运行指标**：`logs/agent.jsonl` 与 `observability` 汇总只覆盖 FastAPI 入口，`app/main.py` 和 `scripts/` 下的冒烟与评测脚本不会产生运行记录。

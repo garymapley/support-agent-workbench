@@ -1,0 +1,101 @@
+name: support-agent
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.20.0
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    expose:
+      - "6333"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          bash -c ':> /dev/tcp/127.0.0.1/6333'
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: sqlite:////app/data/app.db
+      CHECKPOINT_DATABASE_PATH: /app/data/checkpoints.db
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_PATH: ""
+      LOG_PATH: /app/logs/agent.jsonl
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      - api_data:/app/data
+      - api_logs:/app/logs
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      BACKEND_API_URL: http://api:8000
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?请先在根目录 .env 中配置 ADMIN_TOKEN}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/api/backend/health')
+          .then(r=>{if(!r.ok)process.exit(1)})
+          .catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  knowledge-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["tools"]
+    env_file:
+      - .env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_PATH: ""
+    command: ["python", "-m", "scripts.ingest_knowledge"]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+
+volumes:
+  api_data:
+  api_logs:
+  qdrant_data:

@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+.env
+.env.*
+!.env.example
+__pycache__
+*.py[cod]
+.pytest_cache
+.tmp
+.workbuddy
+.hallmark
+data
+logs
+reports
+web

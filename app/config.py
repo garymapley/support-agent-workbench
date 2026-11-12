@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     log_path: str = "./logs/agent.jsonl"
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     admin_token: str = ""
+    operator_token: str = ""
     admin_reviewer: str = "售后值班主管"
 
     @property

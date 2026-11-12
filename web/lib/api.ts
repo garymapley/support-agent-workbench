@@ -1,15 +1,13 @@
 import type { AgentRun, Approval, HistoryMessage, Order, RunRecord, Summary, Ticket } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
-// 演示级鉴权：令牌随前端包下发，生产应改为登录态（见 README「已知限制」）。
-const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? "";
+// 浏览器只访问同源代理；管理令牌仅由 Next.js 服务端注入。
+const API_BASE = "/api/backend";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(ADMIN_TOKEN ? { "X-Admin-Token": ADMIN_TOKEN } : {}),
       ...init?.headers,
     },
   });
