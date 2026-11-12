@@ -5,6 +5,7 @@ import {
   SESSION_COOKIE,
   verifySessionToken,
 } from "@/lib/session";
+import { hasTrustedOrigin } from "@/lib/request-origin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,8 +36,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
     );
   }
   if (request.method !== "GET" && request.method !== "HEAD") {
-    const origin = request.headers.get("origin");
-    if (origin && origin !== request.nextUrl.origin) {
+    if (!hasTrustedOrigin(request)) {
       return Response.json({ detail: "跨站请求已被拒绝。" }, { status: 403 });
     }
   }

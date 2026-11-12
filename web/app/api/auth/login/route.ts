@@ -6,6 +6,7 @@ import {
   SESSION_COOKIE,
   sessionCookieOptions,
 } from "@/lib/session";
+import { hasTrustedOrigin } from "@/lib/request-origin";
 
 const attempts = new Map<string, number[]>();
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
@@ -23,8 +24,7 @@ function loginAllowed(key: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== request.nextUrl.origin) {
+  if (!hasTrustedOrigin(request)) {
     return NextResponse.json({ detail: "跨站登录请求已被拒绝。" }, { status: 403 });
   }
   const client = request.headers.get("x-forwarded-for")?.split(",")[0]
