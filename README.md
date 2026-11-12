@@ -1,213 +1,184 @@
-# 企业售后工单 Agent
+# Support Agent Workbench
 
-当前里程碑：M10 已完成。Agent 已具备订单查询、政策 RAG、人工审批闭环、FastAPI、固定评测集、结构化日志、Next.js 工单工作台和 Docker Compose 部署。
+<p align="center">
+  <strong>一个可在本地复现、面向生产设计的企业售后 Agent 参考实现。</strong>
+</p>
 
-退款审批已经接入主 Agent 图：退款工单会由代码规则自动创建审批，原对话通过 `interrupt()` 暂停，人工决定后使用同一个 `thread_id` 恢复。模型、Embedding 和远程 Qdrant 查询均配置了超时与有限重试；创建工单、创建审批等写操作不会自动重试。
+<p align="center">
+  LangGraph · RAG · Human-in-the-loop · FastAPI · Next.js · Qdrant · Docker
+</p>
 
-默认模型：
+<p align="center">
+  <img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white">
+  <img alt="LangGraph" src="https://img.shields.io/badge/Agent-LangGraph-1C3C3C">
+  <img alt="FastAPI" src="https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white">
+  <img alt="Next.js 16" src="https://img.shields.io/badge/Web-Next.js%2016-000000?logo=next.js&logoColor=white">
+  <img alt="Docker Compose" src="https://img.shields.io/badge/Deploy-Docker%20Compose-2496ED?logo=docker&logoColor=white">
+  <img alt="MIT License" src="https://img.shields.io/badge/License-MIT-green">
+</p>
 
-- 聊天：`deepseek-v4.1-flash`
-- Embedding：`qwen3.7-text-embedding-flash`（1024 维）
-- 向量库：Qdrant 本地持久化模式
+本项目展示如何把大模型从“回答问题的聊天程序”组织成一个具备真实业务工具、政策依据、人工审批、权限边界和持久化状态的完整 Agent 工作流。
 
-## 1. 使用项目虚拟环境
+它不是实际执行退款的生产系统，也不提供在线 Demo；所有订单和政策均为虚构数据，可通过 Docker 在本地完整复现。
 
-本项目可以直接调用虚拟环境中的 Python，不依赖 PowerShell 激活脚本：
+## 项目定位
 
-```powershell
-.\.venv\Scripts\python.exe --version
+普通 Agent Demo 通常只有：
+
+```text
+用户输入 → 调用模型 → 返回回答
 ```
 
-## 2. 配置千问 API
+本项目处理的是更接近企业业务的链路：
 
-将 `.env.example` 复制为 `.env`：
+```text
+用户请求
+  → 身份与权限校验
+  → Agent 调用订单与政策工具
+  → 创建售后工单
+  → 高风险退款进入人工审批
+  → 暂停并持久化当前会话
+  → 审批后恢复同一条对话
+  → 返回有依据、可审计的处理结果
+```
+
+核心目标不是让模型拥有更多权限，而是在模型之外建立明确的业务规则、安全边界和人工责任。
+
+## 核心能力
+
+- **业务工具调用**：查询订单、检索政策、创建工单、查询审批状态和转交人工。
+- **政策 RAG**：使用 Qwen Embedding 与 Qdrant 检索演示政策，回答中标注来源与版本。
+- **人工审批闭环**：通过 LangGraph `interrupt()` 暂停高风险退款流程，并从同一个 `thread_id` 恢复。
+- **代码级风险保护**：退款工单由业务规则强制创建审批，不能仅靠 Prompt 决定是否绕过。
+- **双角色工作台**：操作员负责处理工单，审批管理员拥有退款批准与驳回权限。
+- **状态与审计**：SQLite 保存订单、工单、审批和 Agent 检查点，JSON 日志记录运行轨迹。
+- **可靠性保护**：外部读取设置超时与有限重试，写操作不自动重试，并提供请求限流和失败保护。
+- **可复现运行**：FastAPI、Next.js、Qdrant 和初始化任务统一由 Docker Compose 管理。
+
+## 快速启动
+
+### 前置条件
+
+- Docker Desktop 或 Docker Engine + Compose
+- 阿里云百炼 API Key
+
+### 1. 创建配置
+
+Windows PowerShell：
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-打开 `.env`，将：
+macOS / Linux：
 
-```text
-DASHSCOPE_API_KEY=sk-your-key-here
+```bash
+cp .env.example .env
 ```
 
-替换为你的阿里云百炼 API Key。`.env` 已加入 `.gitignore`，不要将密钥提交到 GitHub。
+编辑 `.env`，至少替换以下配置：
 
-## 3. 运行
-
-首次运行前，先将 `knowledge/` 中的演示政策导入 Qdrant：
-
-```powershell
-.\.venv\Scripts\python.exe -m scripts.ingest_knowledge
+```dotenv
+DASHSCOPE_API_KEY=your-dashscope-api-key
+ADMIN_TOKEN=your-random-admin-token
+OPERATOR_TOKEN=your-random-operator-token
+WORKBENCH_ADMIN_PASSWORD=your-strong-admin-password
+WORKBENCH_OPERATOR_PASSWORD=your-strong-operator-password
+WORKBENCH_SESSION_SECRET=at-least-32-random-characters
 ```
 
-导入会重建本项目的 `support_policies` Collection。如果 Agent 正在运行，请先退出 Agent 再重新导入。
+真实 `.env` 已被 Git 忽略，不要把密钥提交到仓库。
 
-然后启动 Agent：
+### 2. 启动服务
 
-```powershell
-.\.venv\Scripts\python.exe -m app.main
-```
-
-也可以启动 FastAPI 后端：
-
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.api:app --reload
-```
-
-启动后访问：
-
-- Swagger API 测试页面：`http://127.0.0.1:8000/docs`
-- 健康检查：`http://127.0.0.1:8000/health`
-- Agent 对话：`POST /agent/runs`
-- 会话历史：`GET /agent/threads/{thread_id}/history`
-- 工单：`GET/POST /tickets`
-- 转人工：`POST /tickets/{ticket_id}/handoff`
-- 发起退款审批：`POST /tickets/{ticket_id}/refund-approval`
-- 人工审批：`POST /approvals/{approval_id}/decision`
-- 最近运行记录：`GET /observability/runs`
-- 指标汇总：`GET /observability/summary`
-
-### 管理接口鉴权
-
-除 `GET /health` 外，所有接口都要求请求头带 `X-Admin-Token`。`ADMIN_TOKEN` 是审批管理员角色，可访问全部接口；`OPERATOR_TOKEN` 是操作员角色，可查询、运行 Agent、建工单和转人工，但调用退款审批决定接口会返回 `403`。`ADMIN_TOKEN` 留空时管理接口一律返回 `503`，避免忘记配置就裸奔。
-
-在 Swagger 页面测试时，先点右上角 `Authorize`，填入 `ADMIN_TOKEN` 的值，再执行接口；直接用 `curl` 或 PowerShell 调用时必须手动加上该请求头：
-
-```powershell
-Invoke-RestMethod "http://127.0.0.1:8000/tickets?limit=5" -Headers @{ "X-Admin-Token" = "your-random-admin-token" }
-```
-
-审批人身份由服务端从 `ADMIN_REVIEWER` 注入，请求体里自报的 `reviewer` 会被覆盖，因此无法伪造审批记录。
-
-可以使用模拟订单 `A1001`、`A1002` 或 `A1003` 测试：
-
-```text
-订单 A1001 的耳机到货后无法开机，应该怎么处理？
-```
-
-### 启动 Next.js 工单工作台
-
-保持 FastAPI 在 `8000` 端口运行，再打开第二个 PowerShell：
-
-```powershell
-cd web
-Copy-Item .env.local.example .env.local
-npm install
-npm run dev
-```
-
-访问 `http://localhost:3000`。未登录时会跳转到 `/login`；使用 `.env` 中配置的操作员或审批管理员账号。登录成功后服务端签发 8 小时有效的签名 HttpOnly Cookie，浏览器不会接触后端令牌。`http://127.0.0.1:3000` 同样可用——`web/next.config.ts` 已通过 `allowedDevOrigins` 把该来源加入白名单。工作台包含：
-
-- 工单队列、搜索、状态筛选与订单摘要
-- Agent 多轮对话、工具调用和工具结果轨迹
-- 退款人工审批，审批后恢复同一条 LangGraph 对话
-- 人工接管、运行次数、成功率、延迟与待审批数
-
-`BACKEND_API_URL` 可在 `web/.env.local` 中指向其他 FastAPI 地址。浏览器只访问 Next.js 同源代理；代理按登录角色选择 `OPERATOR_TOKEN` 或 `ADMIN_TOKEN`，两者仅由服务端读取。审批按钮只向审批管理员显示，后端仍会再次校验角色。后端的 `CORS_ORIGINS` 用于限制直接访问 FastAPI 的来源。
-
-## Docker Compose 部署
-
-根目录 `.env` 必须配置真实 `DASHSCOPE_API_KEY`、两张随机角色令牌、两组工作台密码和至少 32 字符的 `WORKBENCH_SESSION_SECRET`，然后执行：
-
-```powershell
+```bash
 docker compose build
 docker compose up -d
+```
+
+首次启动需要导入演示政策：
+
+```bash
 docker compose --profile tools run --rm knowledge-init
+```
+
+确认服务状态：
+
+```bash
 docker compose ps
 ```
 
-首次部署只运行一次 `knowledge-init`；它会调用 Embedding API 并将政策写入 Qdrant 持久化卷。以后普通启动只需 `docker compose up -d`。访问地址：
+### 3. 访问
 
-- 工作台：`http://localhost:3000`
-- FastAPI 文档（仅宿主机）：`http://127.0.0.1:8000/docs`
-- 健康检查：`http://127.0.0.1:8000/health`
+- 工作台：<http://localhost:3000>
+- FastAPI 文档：<http://127.0.0.1:8000/docs>
+- 健康检查：<http://127.0.0.1:8000/health>
 
-服务说明：
+默认用户名为 `operator` 和 `admin`，密码使用 `.env` 中配置的值。演示订单可使用 `A1001`、`A1002`、`A1003`。
 
-- `web`：Next.js 生产 `standalone` 镜像，非 root 运行，对外开放 `3000`
-- `api`：FastAPI 镜像，非 root 运行，只绑定宿主机回环地址 `127.0.0.1:8000`
-- `qdrant`：只在 Compose 内部网络开放，不暴露宿主机端口
-- `knowledge-init`：显式的一次性知识导入任务，不随普通启动重复执行
-- `api_data`、`api_logs`、`qdrant_data`：持久化业务数据、日志和向量
+## 人工审批闭环
 
-Compose 已启用 `no-new-privileges`、能力丢弃、只读应用根文件系统、PID/CPU/内存限制和 Docker 日志轮转。FastAPI 对 `/agent/runs` 使用单实例滑动窗口限流，并拒绝超过配置上限的请求体。公网 HTTPS 部署时将 `WORKBENCH_COOKIE_SECURE` 改为 `true`。
+退款不是由 Agent 自主执行的动作。用户明确提出退款后，系统会创建退款工单和审批记录，并在 LangGraph 主图中暂停当前对话。
 
-查看日志和停止服务：
+审批管理员作出决定后，FastAPI 使用同一个 `thread_id` 恢复原会话；Agent 再根据人工决定向用户说明下一步。即使审批通过，状态也只是 `approved_pending_execution`，不会触发真实资金操作。
 
-```powershell
-docker compose logs -f api web qdrant
-docker compose down
-```
+![退款人工审批流程](docs/images/human-approval-flow.png)
 
-`docker compose down` 会保留命名卷；只有明确需要清空所有业务和向量数据时才使用 `docker compose down -v`。公网部署与反向代理要求见 [部署说明](docs/DEPLOYMENT.md)。
+## 系统架构
 
-## 当前数据流
+![企业售后工单 Agent 系统架构](docs/images/architecture.png)
 
-```text
-命令行输入 -> LangGraph -> 聊天模型
-                               |-> get_order -> SQLAlchemy -> SQLite
-                               |-> search_policy -> Embedding -> Qdrant
-                               |-> create_support_ticket -> SQLite（退款自动建审批）
-                               |-> await_approval -> interrupt -> 人工决定
-                               -> 聊天模型 -> 带政策来源的回答
-```
+- **Next.js 工作台**：提供登录、工单队列、对话轨迹、审批和人工接管界面。
+- **FastAPI**：提供 API、角色鉴权、请求限流、错误保护和可观测性入口。
+- **LangGraph**：管理模型、工具、会话状态以及人工审批的暂停与恢复。
+- **SQLite**：保存演示订单、工单、审批记录和 LangGraph 检查点。
+- **Qdrant**：保存政策向量，并通过 Payload 过滤失效政策。
+- **百炼模型服务**：聊天模型使用 `deepseek-v4.1-flash`，Embedding 使用 `qwen3.7-text-embedding-flash`。
 
-首次运行时会自动创建 `data/app.db` 和四条相对日期的演示订单。重复启动不会重复插入。`knowledge/` 包含 17 篇虚构政策，其中 1 篇已失效，用于验证 RAG 的生效状态过滤。
+## 权限与安全边界
 
-运行无需 API 的本地工具测试：
+| 能力 | 操作员 | 审批管理员 |
+|---|:---:|:---:|
+| 查询订单和工单 | ✅ | ✅ |
+| 运行 Agent | ✅ | ✅ |
+| 创建工单和转人工 | ✅ | ✅ |
+| 查看退款审批 | ✅ | ✅ |
+| 批准或驳回退款 | ❌ | ✅ |
 
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
+主要安全设计：
 
-运行一次需要真实 API 的端到端冒烟测试：
+- 浏览器只访问 Next.js 同源代理，不直接接触 FastAPI 的角色 Token。
+- 登录成功后使用签名 HttpOnly Cookie 保存会话。
+- 审批人身份由服务端注入，不能通过请求体伪造。
+- 高风险退款由代码规则强制进入审批节点，而不是依赖模型自觉调用工具。
+- FastAPI 只绑定宿主机回环地址，Qdrant 不映射宿主机端口。
+- 容器采用非 root 用户、只读根文件系统、能力丢弃和资源限制。
 
-```powershell
-.\.venv\Scripts\python.exe -m scripts.smoke_test_agent
-```
+## 技术栈
 
-运行订单 + RAG 联合冒烟测试：
-
-```powershell
-.\.venv\Scripts\python.exe -m scripts.smoke_test_rag
-```
-
-运行不调用模型的人工审批冒烟测试：
-
-```powershell
-.\.venv\Scripts\python.exe -m scripts.smoke_test_approval
-```
-
-运行需要真实模型的主图审批闭环测试：
-
-```powershell
-.\.venv\Scripts\python.exe -m scripts.smoke_test_main_graph_approval
-```
-
-运行固定评测集：
-
-```powershell
-.\.venv\Scripts\python.exe -m scripts.run_evaluation
-```
-
-评测会生成：
-
-- `reports/eval_report.json`：机器可读明细
-- `reports/eval_report.md`：面试展示报告
-
-当前评测包含 13 个真实 Agent 场景、6 个风险边界检查和 1 个故障注入检查。基准结果为工具正确率 100%、策略合规率 100%、风险分级准确率 100%、失败保护通过率 100%，平均延迟约 5.31 秒，总计约 6.6 万 Token，按百炼 2026-11-11 忙时官方单价估算总成本约 ¥0.175。评测使用独立临时数据库，不计入业务指标。每次运行会记录工具、Token、延迟和状态，并在 `logs/agent.jsonl` 输出脱敏 JSON 日志。
-
-审批演示会创建高风险退款工单，在主 LangGraph 的人工节点暂停，再模拟主管审批并从同一个 SQLite thread 检查点恢复。审批通过后的状态是 `approved_pending_execution`，项目不会执行真实退款。
-
-`knowledge/` 中的政策全部是演示数据，不代表真实企业承诺。后续计划见 [ROADMAP.md](ROADMAP.md)。
+| 层级 | 技术 |
+|---|---|
+| Agent 编排 | LangGraph |
+| 聊天模型 | `deepseek-v4.1-flash` |
+| Embedding | `qwen3.7-text-embedding-flash` |
+| RAG / 向量库 | Qdrant |
+| 业务数据与检查点 | SQLite · SQLAlchemy |
+| 后端 API | FastAPI |
+| 前端工作台 | Next.js 16 · React 19 |
+| 评测与日志 | 固定 JSONL 用例 · 脱敏 JSON 日志 |
+| 部署 | Docker Compose |
 
 ## 已知限制
 
-- **账号体系是演示级**：工作台已经具备双角色登录、签名 HttpOnly 会话和后端双重鉴权，但账号密码仍来自环境变量，不包含密码找回、MFA 和集中身份管理；真正多用户生产环境应替换为 OIDC，并记录用户级审计身份。
-- **限流是单实例内存实现**：与当前 SQLite 单副本部署匹配；迁移到多副本后应改用 Redis 或 API 网关限流。
-- **不执行真实退款**：审批通过后的终态是 `approved_pending_execution`，退款由外部系统执行，项目不承担资金操作。
-- **单实例假设**：业务库和 LangGraph 检查点都用本地 SQLite，加上进程内线程锁，不支持多副本水平扩展。
-- **CLI 与脚本不写运行指标**：`logs/agent.jsonl` 与 `observability` 汇总只覆盖 FastAPI 入口，`app/main.py` 和 `scripts/` 下的冒烟与评测脚本不会产生运行记录。
-- **评测的检索判定偏松**：`scripts/run_evaluation.py` 只检查来源文件名是否出现在回答中，不做 top-1 命中校验，因此策略合规率 100% 的可信度需结合手工检索实测一起看。
+- 项目只提供本地运行，不提供长期在线 Demo。
+- 账号和密码来自环境变量，属于演示级身份系统；真实企业环境应接入 OIDC、MFA 和用户级审计。
+- SQLite 和进程内限流只适合单 API 副本；水平扩展前应迁移 PostgreSQL、共享检查点和 Redis 或网关限流。
+- 审批通过不等于退款已经执行；本项目不连接真实支付或退款系统。
+- 知识库、订单、政策和评测数据均为虚构演示数据，不代表任何企业承诺。
+- 固定评测结果用于回归和工程展示，不代表生产环境 SLA。
+
+更多部署边界见 [部署说明](docs/DEPLOYMENT.md)。
+
+## License
+
+本项目采用 [MIT License](LICENSE)。
