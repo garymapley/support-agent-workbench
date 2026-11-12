@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     admin_token: str = ""
     operator_token: str = ""
     admin_reviewer: str = "售后值班主管"
+    agent_rate_limit_requests: int = 10
+    agent_rate_limit_window_seconds: float = 60.0
+    max_request_body_bytes: int = 65_536
 
     @property
     def cors_origin_list(self) -> list[str]:

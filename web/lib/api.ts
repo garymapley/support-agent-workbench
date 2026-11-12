@@ -1,5 +1,10 @@
 import type { AgentRun, Approval, HistoryMessage, Order, RunRecord, Summary, Ticket } from "./types";
 
+export type WorkbenchSession = {
+  username: string;
+  role: "operator" | "admin";
+};
+
 // 浏览器只访问同源代理；管理令牌仅由 Next.js 服务端注入。
 const API_BASE = "/api/backend";
 
@@ -19,6 +24,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  session: async () => {
+    const response = await fetch("/api/auth/session", { cache: "no-store" });
+    if (!response.ok) throw new Error("会话已过期。");
+    return response.json() as Promise<WorkbenchSession>;
+  },
+  logout: async () => {
+    const response = await fetch("/api/auth/logout", { method: "POST" });
+    if (!response.ok) throw new Error("退出登录失败。");
+  },
   health: () => request<{ status: string }>("/health"),
   tickets: () => request<Ticket[]>("/tickets?limit=100"),
   approvals: () => request<Approval[]>("/approvals?limit=100"),

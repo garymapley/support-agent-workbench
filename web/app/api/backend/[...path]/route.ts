@@ -1,5 +1,11 @@
 import type { NextRequest } from "next/server";
 
+import {
+  backendTokenForRole,
+  SESSION_COOKIE,
+  verifySessionToken,
+} from "@/lib/session";
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -7,12 +13,32 @@ type RouteContext = { params: Promise<{ path: string[] }> };
 
 async function proxy(request: NextRequest, context: RouteContext) {
   const backend = process.env.BACKEND_API_URL?.replace(/\/$/, "");
-  const token = process.env.ADMIN_TOKEN;
-  if (!backend || !token) {
+  const session = verifySessionToken(
+    request.cookies.get(SESSION_COOKIE)?.value,
+  );
+  if (!session) {
+    return Response.json({ detail: "未登录或会话已过期。" }, { status: 401 });
+  }
+  let token: string;
+  try {
+    token = backendTokenForRole(session.role);
+  } catch {
     return Response.json(
-      { detail: "工作台服务端未配置 BACKEND_API_URL 或 ADMIN_TOKEN。" },
+      { detail: "工作台服务端没有配置当前角色的后端令牌。" },
       { status: 503 },
     );
+  }
+  if (!backend) {
+    return Response.json(
+      { detail: "工作台服务端未配置 BACKEND_API_URL。" },
+      { status: 503 },
+    );
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    const origin = request.headers.get("origin");
+    if (origin && origin !== request.nextUrl.origin) {
+      return Response.json({ detail: "跨站请求已被拒绝。" }, { status: 403 });
+    }
   }
 
   const { path } = await context.params;

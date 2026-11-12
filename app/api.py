@@ -1,4 +1,5 @@
 import json
+import hashlib
 from contextlib import asynccontextmanager
 from time import perf_counter
 from typing import Any
@@ -6,6 +7,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
 
@@ -23,6 +25,7 @@ from app.execution_guard import ThreadBusyError, guard_thread
 from app.graph import graph
 from app.order_repository import find_order_by_id, list_orders
 from app.qdrant_store import close_qdrant_client
+from app.rate_limit import SlidingWindowRateLimiter
 from app.run_repository import list_runs, summarize_runs
 from app.security import require_operator, require_reviewer
 from app.seed import prepare_database
@@ -64,11 +67,42 @@ app.add_middleware(
     expose_headers=["X-Request-ID"],
 )
 
+agent_rate_limiter = SlidingWindowRateLimiter()
+
 
 @app.middleware("http")
 async def request_observability(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or uuid4().hex
     started = perf_counter()
+    settings = get_settings()
+    if request.method in {"POST", "PUT", "PATCH"}:
+        body = await request.body()
+        if len(body) > settings.max_request_body_bytes:
+            response = JSONResponse(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                content={"detail": "请求体超过允许大小。"},
+            )
+            response.headers["X-Request-ID"] = request_id
+            return response
+    if request.url.path == "/agent/runs":
+        token = request.headers.get("X-Admin-Token", "")
+        client_host = request.client.host if request.client else "unknown"
+        identity = hashlib.sha256(
+            f"{client_host}:{token}".encode("utf-8")
+        ).hexdigest()
+        allowed, retry_after = agent_rate_limiter.allow(
+            identity,
+            limit=settings.agent_rate_limit_requests,
+            window_seconds=settings.agent_rate_limit_window_seconds,
+        )
+        if not allowed:
+            response = JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={"detail": "Agent 请求过于频繁，请稍后重试。"},
+                headers={"Retry-After": str(retry_after)},
+            )
+            response.headers["X-Request-ID"] = request_id
+            return response
     try:
         response = await call_next(request)
     except Exception:

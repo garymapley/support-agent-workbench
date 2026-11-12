@@ -9,7 +9,7 @@
 ## 云主机步骤
 
 1. 安装 Docker Engine 与 Compose 插件，克隆仓库。
-2. 从 `.env.example` 创建 `.env`，配置真实 `DASHSCOPE_API_KEY`，并为 `ADMIN_TOKEN`、`OPERATOR_TOKEN` 生成不同的随机长串。
+2. 从 `.env.example` 创建 `.env`，配置真实 `DASHSCOPE_API_KEY`，并为 `ADMIN_TOKEN`、`OPERATOR_TOKEN`、两组工作台密码和 `WORKBENCH_SESSION_SECRET` 生成互不相同的随机值。
 3. 运行 `docker compose build` 与 `docker compose up -d`。
 4. 首次部署运行 `docker compose --profile tools run --rm knowledge-init`。
 5. 用 `docker compose ps` 确认 `web`、`api`、`qdrant` 都是 `healthy`。
@@ -19,8 +19,9 @@
 
 - `.env` 不进入镜像且已被 Git 忽略。云端优先使用平台 Secret Manager 注入同名环境变量。
 - 不要把 `ADMIN_TOKEN` 改成 `NEXT_PUBLIC_*` 变量；带该前缀的值会进入浏览器包。
+- 公网 HTTPS 部署必须设置 `WORKBENCH_COOKIE_SECURE=true`，使登录 Cookie 只通过加密连接发送。
 - 备份前短暂停止 API，备份 `api_data` 和 `qdrant_data` 两个卷；恢复时使用相同或兼容版本的 Qdrant。
-- 正式公网服务必须启用 HTTPS，并把静态令牌方案替换为 OIDC/企业登录态。
+- 正式多用户服务应把环境变量账号替换为 OIDC/企业登录态；后端角色令牌仍只保留在服务端。
 
 ## 发布检查
 
@@ -31,4 +32,4 @@ docker compose up -d
 docker compose ps
 ```
 
-验收标准：工作台首页为 `200`，`/api/backend/health` 返回 `{"status":"ok"}`，直接无令牌访问 FastAPI 受保护接口返回 `401`，操作员令牌调用审批决定接口返回 `403`。
+验收标准：未登录访问工作台会跳转 `/login`，匿名代理请求返回 `401`，操作员能读取工单但审批返回 `403`，审批管理员能进入审批接口，快速超过 Agent 配额时返回 `429`；三个服务均为 `healthy`。

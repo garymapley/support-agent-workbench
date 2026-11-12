@@ -12,6 +12,7 @@ import {
   Handshake,
   Inbox,
   LoaderCircle,
+  LogOut,
   MessageSquareText,
   RefreshCw,
   Search,
@@ -21,8 +22,9 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import { api } from "@/lib/api";
+import { api, type WorkbenchSession } from "@/lib/api";
 import type { AgentRun, Approval, HistoryMessage, Order, RunRecord, Summary, Ticket } from "@/lib/types";
 
 type Filter = "all" | "pending" | "handoff";
@@ -52,6 +54,7 @@ function ticketThreadKey(ticketId: string) {
 }
 
 export default function WorkbenchPage() {
+  const router = useRouter();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -73,6 +76,7 @@ export default function WorkbenchPage() {
   const [comment, setComment] = useState("");
   const [handoffReason, setHandoffReason] = useState("需要人工专员核实客户诉求并跟进。");
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
+  const [session, setSession] = useState<WorkbenchSession | null>(null);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -96,6 +100,13 @@ export default function WorkbenchPage() {
       setLoadState("error");
     }
   }, []);
+
+  useEffect(() => {
+    void api.session().then((current) => {
+      setSession(current);
+      setReviewer(current.username);
+    }).catch(() => router.replace("/login"));
+  }, [router]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadWorkspace(), 0);
@@ -196,7 +207,7 @@ export default function WorkbenchPage() {
   }
 
   async function decide(decision: "approve" | "reject") {
-    if (!selectedApproval || actionBusy || !reviewer.trim()) return;
+    if (!selectedApproval || actionBusy || !reviewer.trim() || session?.role !== "admin") return;
     setActionBusy(true);
     setActionError("");
     setNotice("");
@@ -210,6 +221,15 @@ export default function WorkbenchPage() {
       setActionError(error instanceof Error ? error.message : "审批提交失败。");
     } finally {
       setActionBusy(false);
+    }
+  }
+
+  async function logout() {
+    try {
+      await api.logout();
+    } finally {
+      router.replace("/login");
+      router.refresh();
     }
   }
 
@@ -239,8 +259,12 @@ export default function WorkbenchPage() {
         </div>
         <div className="topbar-status" role="status">
           <span className="connection" data-error={apiOnline === false}><span aria-hidden="true" />{apiOnline === null ? "正在连接 FastAPI" : apiOnline ? "FastAPI 已连接" : "FastAPI 未连接"}</span>
+          {session && <span className="session-badge"><strong>{session.username}</strong><small>{session.role === "admin" ? "审批管理员" : "操作员"}</small></span>}
           <button className="icon-button" type="button" onClick={refreshWorkspace} aria-label="刷新工作台" disabled={loadState === "loading"}>
             <RefreshCw size={18} className={loadState === "loading" ? "spin" : ""} />
+          </button>
+          <button className="icon-button" type="button" onClick={() => void logout()} aria-label="退出登录">
+            <LogOut size={18} />
           </button>
         </div>
       </header>
@@ -342,10 +366,10 @@ export default function WorkbenchPage() {
                 <div><dt>请求时间</dt><dd>{formatTime(selectedApproval.requested_at)}</dd></div>
               </dl>
               <p className="approval-reason">{selectedApproval.reason}</p>
-              {selectedApproval.status === "pending" ? (
+              {selectedApproval.status === "pending" && session?.role === "admin" ? (
                 <div className="decision-form">
                   <label htmlFor="reviewer">审批人</label>
-                  <input id="reviewer" name="reviewer" value={reviewer} onChange={(event) => setReviewer(event.target.value)} disabled={actionBusy} autoComplete="name" />
+                  <input id="reviewer" name="reviewer" value={reviewer} readOnly aria-readonly="true" />
                   <label htmlFor="review-comment">审批意见</label>
                   <textarea id="review-comment" name="review-comment" value={comment} onChange={(event) => setComment(event.target.value)} rows={3} placeholder="说明通过或驳回依据" disabled={actionBusy} />
                   <div className="decision-actions">
@@ -353,6 +377,8 @@ export default function WorkbenchPage() {
                     <button className="primary-button" type="button" onClick={() => void decide("approve")} disabled={actionBusy || !reviewer.trim()} aria-busy={actionBusy}><Check size={17} />通过</button>
                   </div>
                 </div>
+              ) : selectedApproval.status === "pending" ? (
+                <div className="permission-note"><ShieldCheck size={20} /><div><strong>等待审批管理员处理</strong><span>操作员可以查看申请，但不能批准或驳回退款。</span></div></div>
               ) : (
                 <div className="decision-result"><CheckCircle2 size={20} /><div><strong>{selectedApproval.status === "approved" ? "已通过" : "已驳回"}</strong><span>{selectedApproval.reviewer ?? "未记录审批人"}</span></div></div>
               )}

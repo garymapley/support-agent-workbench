@@ -71,12 +71,12 @@ DASHSCOPE_API_KEY=sk-your-key-here
 
 ### 管理接口鉴权
 
-除 `GET /health` 外，所有接口都要求请求头带 `X-Admin-Token`。`ADMIN_TOKEN` 是审批管理员角色，可访问全部接口；可选的 `OPERATOR_TOKEN` 是操作员角色，可查询、运行 Agent、建工单和转人工，但调用退款审批决定接口会返回 `403`。`ADMIN_TOKEN` 留空时管理接口一律返回 `503`，避免忘记配置就裸奔。
+除 `GET /health` 外，所有接口都要求请求头带 `X-Admin-Token`。`ADMIN_TOKEN` 是审批管理员角色，可访问全部接口；`OPERATOR_TOKEN` 是操作员角色，可查询、运行 Agent、建工单和转人工，但调用退款审批决定接口会返回 `403`。`ADMIN_TOKEN` 留空时管理接口一律返回 `503`，避免忘记配置就裸奔。
 
 在 Swagger 页面测试时，先点右上角 `Authorize`，填入 `ADMIN_TOKEN` 的值，再执行接口；直接用 `curl` 或 PowerShell 调用时必须手动加上该请求头：
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8000/tickets?limit=5" -Headers @{ "X-Admin-Token" = "demo-admin-token-2026" }
+Invoke-RestMethod "http://127.0.0.1:8000/tickets?limit=5" -Headers @{ "X-Admin-Token" = "your-random-admin-token" }
 ```
 
 审批人身份由服务端从 `ADMIN_REVIEWER` 注入，请求体里自报的 `reviewer` 会被覆盖，因此无法伪造审批记录。
@@ -98,18 +98,18 @@ npm install
 npm run dev
 ```
 
-访问 `http://localhost:3000`。`http://127.0.0.1:3000` 同样可用——`web/next.config.ts` 已通过 `allowedDevOrigins` 把该来源加入白名单，否则 Next.js 16 会把 dev 资源请求判为跨源而返回 403，页面会停在骨架屏。工作台包含：
+访问 `http://localhost:3000`。未登录时会跳转到 `/login`；使用 `.env` 中配置的操作员或审批管理员账号。登录成功后服务端签发 8 小时有效的签名 HttpOnly Cookie，浏览器不会接触后端令牌。`http://127.0.0.1:3000` 同样可用——`web/next.config.ts` 已通过 `allowedDevOrigins` 把该来源加入白名单。工作台包含：
 
 - 工单队列、搜索、状态筛选与订单摘要
 - Agent 多轮对话、工具调用和工具结果轨迹
 - 退款人工审批，审批后恢复同一条 LangGraph 对话
 - 人工接管、运行次数、成功率、延迟与待审批数
 
-`BACKEND_API_URL` 可在 `web/.env.local` 中指向其他 FastAPI 地址。浏览器只访问 Next.js 同源代理，`ADMIN_TOKEN` 仅由服务端读取，不再进入浏览器包。后端的 `CORS_ORIGINS` 用于限制直接访问 FastAPI 的来源。
+`BACKEND_API_URL` 可在 `web/.env.local` 中指向其他 FastAPI 地址。浏览器只访问 Next.js 同源代理；代理按登录角色选择 `OPERATOR_TOKEN` 或 `ADMIN_TOKEN`，两者仅由服务端读取。审批按钮只向审批管理员显示，后端仍会再次校验角色。后端的 `CORS_ORIGINS` 用于限制直接访问 FastAPI 的来源。
 
 ## Docker Compose 部署
 
-根目录 `.env` 必须配置真实 `DASHSCOPE_API_KEY` 和随机的 `ADMIN_TOKEN`，然后执行：
+根目录 `.env` 必须配置真实 `DASHSCOPE_API_KEY`、两张随机角色令牌、两组工作台密码和至少 32 字符的 `WORKBENCH_SESSION_SECRET`，然后执行：
 
 ```powershell
 docker compose build
@@ -131,6 +131,8 @@ docker compose ps
 - `qdrant`：只在 Compose 内部网络开放，不暴露宿主机端口
 - `knowledge-init`：显式的一次性知识导入任务，不随普通启动重复执行
 - `api_data`、`api_logs`、`qdrant_data`：持久化业务数据、日志和向量
+
+Compose 已启用 `no-new-privileges`、能力丢弃、只读应用根文件系统、PID/CPU/内存限制和 Docker 日志轮转。FastAPI 对 `/agent/runs` 使用单实例滑动窗口限流，并拒绝超过配置上限的请求体。公网 HTTPS 部署时将 `WORKBENCH_COOKIE_SECURE` 改为 `true`。
 
 查看日志和停止服务：
 
@@ -203,7 +205,8 @@ docker compose down
 
 ## 已知限制
 
-- **RBAC 是演示级**：操作员与审批管理员通过两张静态令牌区分，令牌已留在 Next.js 服务端，不进入浏览器包；真正多用户生产环境仍应改为登录态或 OIDC，并记录用户级审计身份。
+- **账号体系是演示级**：工作台已经具备双角色登录、签名 HttpOnly 会话和后端双重鉴权，但账号密码仍来自环境变量，不包含密码找回、MFA 和集中身份管理；真正多用户生产环境应替换为 OIDC，并记录用户级审计身份。
+- **限流是单实例内存实现**：与当前 SQLite 单副本部署匹配；迁移到多副本后应改用 Redis 或 API 网关限流。
 - **不执行真实退款**：审批通过后的终态是 `approved_pending_execution`，退款由外部系统执行，项目不承担资金操作。
 - **单实例假设**：业务库和 LangGraph 检查点都用本地 SQLite，加上进程内线程锁，不支持多副本水平扩展。
 - **CLI 与脚本不写运行指标**：`logs/agent.jsonl` 与 `observability` 汇总只覆盖 FastAPI 入口，`app/main.py` 和 `scripts/` 下的冒烟与评测脚本不会产生运行记录。
