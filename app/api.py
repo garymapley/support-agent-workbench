@@ -28,10 +28,10 @@ from app.security import require_admin
 from app.seed import prepare_database
 from app.telemetry import configure_logging, logger, record_run
 from app.workflow_repository import (
+    PendingApprovalError,
     create_support_ticket,
     create_refund_approval,
     get_approval,
-    get_latest_approval_for_ticket,
     get_ticket,
     list_approvals,
     list_tickets,
@@ -326,11 +326,7 @@ def create_ticket(payload: TicketCreateRequest) -> dict[str, Any]:
         stored_thread_id = f"agent:{public_thread_id}"
         ticket = create_support_ticket(
             **data,
-            thread_id=(
-                stored_thread_id
-                if data["proposed_action"] == "refund"
-                else None
-            ),
+            thread_id=stored_thread_id,
         )
         approval = ticket.get("approval")
         if approval:
@@ -371,15 +367,9 @@ def handoff_ticket(
     payload: HandoffRequest,
 ) -> dict[str, Any]:
     try:
-        pending = get_latest_approval_for_ticket(ticket_id)
-        if pending and pending["status"] == "pending":
-            raise HTTPException(
-                status_code=409,
-                detail="工单正在等待审批，请先完成或驳回审批。",
-            )
         return escalate_ticket(ticket_id, payload.reason)
-    except HTTPException:
-        raise
+    except PendingApprovalError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         detail = str(exc)
         code = 404 if "不存在" in detail else 400

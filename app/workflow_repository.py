@@ -9,6 +9,10 @@ from app.db_models import ApprovalRequest, SupportTicket
 from app.order_repository import find_order_by_id
 
 
+class PendingApprovalError(ValueError):
+    """工单存在待处理审批，不能进入其他终态。"""
+
+
 def assess_risk(order: dict[str, Any], proposed_action: str) -> str:
     """根据订单与建议动作给出可解释的基础风险等级。"""
 
@@ -280,6 +284,18 @@ def escalate_ticket(ticket_id: str, reason: str) -> dict[str, Any]:
         )
         if ticket is None:
             raise ValueError(f"工单 {normalized_id} 不存在")
+        pending_approval = session.scalar(
+            select(ApprovalRequest.id)
+            .where(
+                ApprovalRequest.ticket_id == normalized_id,
+                ApprovalRequest.status == "pending",
+            )
+            .limit(1)
+        )
+        if pending_approval is not None:
+            raise PendingApprovalError(
+                "工单正在等待审批，请先完成或驳回审批。"
+            )
         ticket.status = "human_handoff"
         ticket.handoff_reason = reason.strip()
         session.flush()

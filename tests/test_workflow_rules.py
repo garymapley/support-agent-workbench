@@ -18,9 +18,13 @@ os.environ.setdefault(
 os.environ.setdefault("LOG_PATH", f"{_TEST_DIR}/agent.jsonl")
 
 from app.tools.workflow_tools import get_approval_status
-from app.workflow_repository import assess_risk
+from app.workflow_repository import PendingApprovalError, assess_risk
 from app.seed import prepare_database
-from app.workflow_repository import create_support_ticket
+from app.workflow_repository import (
+    create_support_ticket,
+    escalate_ticket,
+    get_ticket,
+)
 
 
 class WorkflowRiskTests(unittest.TestCase):
@@ -87,6 +91,23 @@ class WorkflowRiskTests(unittest.TestCase):
         self.assertEqual(ticket["issue_type"], "refund")
         self.assertEqual(ticket["proposed_action"], "refund")
         self.assertEqual(ticket["status"], "pending_approval")
+
+    def test_pending_approval_cannot_be_escalated_by_tool_layer(self) -> None:
+        ticket = create_support_ticket(
+            order_id="A1001",
+            issue_type="refund",
+            description="验证仓储层阻止冲突状态。",
+            proposed_action="refund",
+            thread_id="agent:test-pending-handoff",
+        )
+        with self.assertRaises(PendingApprovalError):
+            escalate_ticket(
+                ticket["ticket_id"],
+                "尝试绕过 API 转人工",
+            )
+        unchanged = get_ticket(ticket["ticket_id"])
+        self.assertIsNotNone(unchanged)
+        self.assertEqual(unchanged["status"], "pending_approval")
 
 
 if __name__ == "__main__":

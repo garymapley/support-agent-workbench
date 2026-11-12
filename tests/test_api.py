@@ -120,6 +120,35 @@ class ApiTests(unittest.TestCase):
             )
         self.assertEqual(context.exception.status_code, 409)
 
+    def test_ticket_api_preserves_thread_for_non_refund(self) -> None:
+        ticket = create_ticket(
+            TicketCreateRequest(
+                thread_id="rest-warranty-thread",
+                order_id="A1001",
+                issue_type="warranty",
+                description="REST 工单需保留原会话。",
+                proposed_action="repair",
+            )
+        )
+        self.assertEqual(ticket["thread_id"], "agent:rest-warranty-thread")
+
+    def test_ticket_api_forces_refund_from_issue_type(self) -> None:
+        ticket = create_ticket(
+            TicketCreateRequest(
+                thread_id="rest-refund-override",
+                order_id="A1001",
+                issue_type="refund",
+                description="客户明确申请退款。",
+                proposed_action="diagnose",
+            )
+        )
+        self.assertEqual(ticket["proposed_action"], "refund")
+        self.assertEqual(ticket["thread_id"], "agent:rest-refund-override")
+        self.assertEqual(ticket["status"], "pending_approval")
+        self.assertEqual(
+            ticket["agent_run"]["status"], "waiting_for_approval"
+        )
+
     @patch("app.api.graph.invoke")
     def test_agent_run_contract(self, invoke) -> None:
         invoke.return_value = {
